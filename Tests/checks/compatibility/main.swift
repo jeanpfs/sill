@@ -178,7 +178,8 @@ check(!json(takes).contains("clipboard") && !json(list).contains("clipboard"), "
 check(decodedOld != nil && decodedOld?.clipboard == nil, "an older host's list decodes, clipboard nil")
 check(Wire.decode(WindowList.self, from: Wire.encode(shares)).map { $0.clipboard == 1 && $0.gestures == 1 } == true, "clipboard round-trips beside gestures")
 check(StreamMessageKind.clipboard.rawValue == 32 && StreamMessageKind(rawValue: 32) == .clipboard, "kind 32 is the clipboard")
-check([29, 30, 31, 33].allSatisfy { StreamMessageKind(rawValue: $0) == nil }, "29, 30, 31 and 33 not this build's")
+check([29, 30, 31].allSatisfy { StreamMessageKind(rawValue: $0) == nil } && StreamMessageKind(rawValue: 33) == .textFocus,
+      "29, 30 and 31 not this build's; kind 33 is the text focus")
 let clip = Clipboard(text: "Hello")
 check(json(clip) == #"{"text":"Hello"}"# && json(Clipboard()) == "{}" && json(Clipboard(stop: true)) == #"{"stop":true}"#, "kind 32's keys: \(json(clip))")
 check(Wire.decode(Clipboard.self, from: Data(#"{"text":"a","image":"AQID","later":1}"#.utf8)) == Clipboard(text: "a", image: Data([1, 2, 3])),

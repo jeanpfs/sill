@@ -47,6 +47,8 @@ object Kind {
     const val FETCH_MENU = 27
     // Trackpad gestures (Gesture.swift)
     const val GESTURE = 28
+    // Text focus (TextFocus.swift): the Mac says when a text field has focus, to a device that subscribed
+    const val TEXT_FOCUS = 33
 }
 
 class Message(val kind: Int, val timestamp: Double, val isKeyframe: Boolean, val payload: ByteArray)

@@ -143,6 +143,8 @@ data class WindowList(
     val hostVersion: String?,
     val protocol: Int?,
     val gestures: Int?,
+    /** 1 or more: this Mac tells a subscribed device when a text field has focus (kind 33). */
+    val textFocus: Int? = null,
 ) {
     companion object {
         fun parse(bytes: ByteArray): WindowList? = runCatching {
@@ -160,6 +162,7 @@ data class WindowList(
                 hostVersion = o.optStringOrNull("hostVersion"),
                 protocol = o.optIntOrNull("protocol"),
                 gestures = o.optIntOrNull("gestures"),
+                textFocus = o.optIntOrNull("textFocus"),
             )
         }.getOrNull()
     }

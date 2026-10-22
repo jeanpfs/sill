@@ -89,6 +89,10 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     var videoSize by mutableStateOf<Pair<Int, Int>?>(null); private set
     var cursor by mutableStateOf<CursorSprite?>(null); private set
     var hostGestures by mutableIntStateOf(0); private set
+    var hostTextFocus by mutableIntStateOf(0); private set
+    /** A text field has focus on the Mac (kind 33), while this device is subscribed. */
+    var macTextFocused by mutableStateOf(false); private set
+    var macTextSecure by mutableStateOf(false); private set
     var hostVersion by mutableStateOf<String?>(null); private set
     var stats by mutableStateOf<LinkStats?>(null); private set
     var notice by mutableStateOf<String?>(null); private set
@@ -120,7 +124,25 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     var gesturesEnabled by mutableStateOf(prefs.getBoolean("trackpadGestures", true)); private set
     var showHud by mutableStateOf(prefs.getBoolean("hud", false)); private set
     fun setGestures(on: Boolean) { gesturesEnabled = on; prefs.edit().putBoolean("trackpadGestures", on).apply() }
+
+    /** Open the soft keyboard by itself when a text field takes focus on the Mac. */
+    var autoKeyboard by mutableStateOf(prefs.getBoolean("autoKeyboard", true)); private set
+    fun useAutoKeyboard(on: Boolean) {
+        autoKeyboard = on; prefs.edit().putBoolean("autoKeyboard", on).apply()
+        syncTextFocusSubscription()
+    }
+
+    /** Kind 33 subscribes this device to the Mac's text-focus changes; `stop` ends it. Costs the Mac nothing otherwise. */
+    private fun syncTextFocusSubscription() {
+        val s = session ?: return
+        if (!sessionReady || hostTextFocus < 1) return
+        if (autoKeyboard) s.send(Kind.TEXT_FOCUS) else { s.sendJson(Kind.TEXT_FOCUS, """{"stop":true}"""); macTextFocused = false }
+    }
     fun setHud(on: Boolean) { showHud = on; prefs.edit().putBoolean("hud", on).apply() }
+
+    /** A string the stream screen keeps between sessions (where the command bubble rests). */
+    fun uiPref(key: String): String? = prefs.getString(key, null)
+    fun setUiPref(key: String, value: String) { prefs.edit().putString(key, value).apply() }
 
     // The pointer sprite (PointerPresence): the Mac's while the Mac or another device moved it last,
     // this device's own only for the trackpad.
@@ -409,6 +431,7 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         windows = emptyList(); active = StreamSource.None; previousActive = StreamSource.None
         thumbnails.clear(); apps = emptyList(); videoSize = null; cursor = null; stats = null
         hasSettings = false; hostState = null; shownSettings = null; ledger.reset(); settingsRevision++; resolutionAsked = false
+        macTextFocused = false; macTextSecure = false; hostTextFocus = 0
         menuState.reset(); menuRevision++; hasMenus = false
         macPointer = null; pointerHere = true
         lastViewportJson = null
@@ -494,6 +517,11 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     private fun handleOnMain(session: Session, msg: Message) {
         when (msg.kind) {
             Kind.WINDOW_LIST -> WindowList.parse(msg.payload)?.let { windowList(session, it) }
+            Kind.TEXT_FOCUS -> runCatching {
+                val o = org.json.JSONObject(String(msg.payload, Charsets.UTF_8))
+                macTextFocused = o.optBoolean("focused", false)
+                macTextSecure = macTextFocused && o.optBoolean("secure", false)
+            }
             Kind.APP_LIST -> apps = parseAppList(msg.payload)
             Kind.HOST_SETTINGS -> HostSettingsState.parse(msg.payload)?.let { settingsState(it) }
             Kind.MAC_INFO -> SignedMacInfo.parse(msg.payload)?.let { macInfo(session, it) }
@@ -515,6 +543,7 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         windows = list.windows
         macName = SafeText.label(list.macName, 64).ifEmpty { currentMac?.name ?: "Mac" }
         hostGestures = list.gestures ?: 0
+        hostTextFocus = list.textFocus ?: 0
         hostVersion = list.hostVersion
         val ids = list.windows.map { it.id }.toSet()
         thumbnails.keys.retainAll(ids)
@@ -534,6 +563,7 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
             session.sendJson(Kind.FETCH_MENU, Payloads.fetchMenu(sub.token))
             lastViewportJson = null
             sendViewport(immediately = true)
+            syncTextFocusSubscription()
         }
         // Nothing streams: ask for the Desktop (at most every 10 s), unless the watched window just
         // closed, when the device waits 2 s for the person's own pick first.

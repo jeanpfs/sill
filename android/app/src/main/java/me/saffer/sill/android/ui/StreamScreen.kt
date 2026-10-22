@@ -60,6 +60,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -112,6 +113,19 @@ fun StreamScreen(client: SillClient) {
     // A panel's search field takes focus; once it closes, hardware keys go to the Mac again.
     LaunchedEffect(overlay, sink) { if (overlay == Overlay.NONE) sink?.requestFocus() }
 
+    // A text field takes focus on the Mac: the keyboard comes up by itself, and goes with the focus. Only a
+    // keyboard this raised goes away by itself, and one the person put away stays away until the next focus.
+    var autoOpened by remember { mutableStateOf(false) }
+    val imeNow by rememberUpdatedState(imeVisible)
+    LaunchedEffect(client.macTextFocused, sink) {
+        val s = sink ?: return@LaunchedEffect
+        if (client.macTextFocused) {
+            if (!imeNow && !keyboardWanted) { overlay = Overlay.NONE; keyboardWanted = true; autoOpened = true; s.show() }
+        } else if (autoOpened) {
+            autoOpened = false; keyboardWanted = false; s.hide()
+        }
+    }
+
     fun toggleKeyboard() {
         val s = sink ?: return
         if (keyboardWanted || imeVisible) { keyboardWanted = false; s.hide() } else { overlay = Overlay.NONE; keyboardWanted = true; s.show() }
@@ -131,6 +145,16 @@ fun StreamScreen(client: SillClient) {
         }
     }
 
+    val panelContent: @Composable (Modifier) -> Unit = { m ->
+        when (overlay) {
+            Overlay.APPS -> AppsPanel(client, m, onDone = { overlay = Overlay.NONE })
+            Overlay.SETTINGS -> SettingsPanel(client, m, onDone = { overlay = Overlay.NONE }, onDisconnect = { overlay = Overlay.NONE; client.disconnect() })
+            Overlay.MENUS -> MenusPanel(client, m, onDone = { overlay = Overlay.NONE })
+            Overlay.SCALE -> ScalePanel(client, m, onDone = { overlay = Overlay.NONE })
+            Overlay.NONE -> Unit
+        }
+    }
+
     val bar = BarActions(
         client = client, overlay = overlay, keyboardUp = keyboardWanted || imeVisible,
         onApps = { open(Overlay.APPS) }, onSettings = { open(Overlay.SETTINGS) }, onMenus = { open(Overlay.MENUS) },
@@ -147,11 +171,16 @@ fun StreamScreen(client: SillClient) {
             modifier = Modifier.size(1.dp),
         )
         when {
-            !portrait -> Column(Modifier.fillMaxSize()) {
-                LandscapeBar(bar)
-                VideoPanel(
-                    client, Modifier.weight(1f).fillMaxWidth().then(if (imeVisible) Modifier.imePadding() else Modifier),
-                    reportSize = !imeVisible, onTouched = closePanel,
+            // Sideways (a Fold open, a tablet, a phone on its side): no bar. The picture has the whole screen and
+            // the controls are one bubble the person puts where the thumb reaches.
+            !portrait -> Box(Modifier.fillMaxSize().then(if (imeVisible) Modifier.imePadding() else Modifier)) {
+                VideoPanel(client, Modifier.fillMaxSize(), reportSize = !imeVisible, onTouched = closePanel)
+                if (overlay != Overlay.NONE) Box(Modifier.fillMaxSize().background(Color(0x66000000))
+                    .clickable(interactionSource = null, indication = null) { overlay = Overlay.NONE })
+                CommandBubbleLayer(
+                    client = client, overlay = overlay, keyboardUp = keyboardWanted || imeVisible,
+                    onOpen = { open(it) }, onCloseOverlay = { overlay = Overlay.NONE }, onKeyboard = { toggleKeyboard() },
+                    panel = { panelContent(Modifier) },
                 )
             }
             wide -> Column(Modifier.fillMaxSize().navigationBarsPadding()) {
@@ -176,20 +205,15 @@ fun StreamScreen(client: SillClient) {
         // Panels over the stream: sideways under the bar; a phone upright under the picture, so a
         // change shows in it; a tablet upright under the picture's half. A tap outside closes.
         val panelTop = when {
-            !portrait -> 56.dp
+            !portrait -> 0.dp
             !wide -> maxWidth / 1.6f + 8.dp
             else -> 0.dp
         }
-        if (overlay != Overlay.NONE) Box(Modifier.fillMaxSize().padding(top = panelTop).background(Color(0x66000000))
+        if (portrait && overlay != Overlay.NONE) Box(Modifier.fillMaxSize().padding(top = panelTop).background(Color(0x66000000))
             .clickable(interactionSource = null, indication = null) { overlay = Overlay.NONE })
-        Box(Modifier.fillMaxSize().padding(top = panelTop)) {
-            when (overlay) {
-                Overlay.APPS -> AppsPanel(client, Modifier.align(Alignment.TopStart), onDone = { overlay = Overlay.NONE })
-                Overlay.SETTINGS -> SettingsPanel(client, Modifier.align(Alignment.TopEnd), onDone = { overlay = Overlay.NONE }, onDisconnect = { overlay = Overlay.NONE; client.disconnect() })
-                Overlay.MENUS -> MenusPanel(client, Modifier.align(Alignment.TopEnd), onDone = { overlay = Overlay.NONE })
-                Overlay.SCALE -> ScalePanel(client, Modifier.align(Alignment.TopEnd), onDone = { overlay = Overlay.NONE })
-                Overlay.NONE -> Unit
-            }
+        // Upright, the panel hangs from a corner; sideways the bubble's layer places it beside the bubble.
+        if (portrait) Box(Modifier.fillMaxSize().padding(top = panelTop)) {
+            panelContent(Modifier.align(if (overlay == Overlay.APPS) Alignment.TopStart else Alignment.TopEnd))
         }
 
         // The Mac's notices, the reconnect, the HUD.
