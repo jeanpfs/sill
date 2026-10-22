@@ -2,6 +2,9 @@ package me.saffer.sill.android.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VectorConverter
@@ -57,6 +60,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -137,7 +141,9 @@ fun CommandBubbleLayer(
     var lastActive by remember { mutableStateOf(client.active) }
     LaunchedEffect(client.active) { if (client.active != lastActive) { lastActive = client.active; sheetOpen = false } }
 
-    val progress by animateFloatAsState(if (arcOpen) 1f else 0f, spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow), label = "arc")
+    // The arc stays composed while its buttons are still going back.
+    var arcShown by remember { mutableStateOf(false) }
+    LaunchedEffect(arcOpen) { if (arcOpen) arcShown = true else { delay(ARC_CLOSE_MS + 60L); arcShown = false } }
     val bubbleAlpha by animateFloatAsState(if (awake || arcOpen || dragging || overlay != Overlay.NONE || sheetOpen) 1f else 0.4f, label = "bubbleAlpha")
     val currentOverlay by rememberUpdatedState(overlay)
     val closeOverlay by rememberUpdatedState(onCloseOverlay)
@@ -170,66 +176,31 @@ fun CommandBubbleLayer(
             AnchoredPanel(place, cxDp * d, cyDp * d, (BubbleGeometry.BUBBLE / 2f + 12f) * d, d) { panel() }
         }
 
-        // The arc: six buttons that leave the bubble toward the inside of the screen, each with its name.
-        if (progress > 0.01f && area != IntSize.Zero) {
+        // The arc: six buttons that leave the bubble toward the inside of the screen, one after the other.
+        if (arcShown && area != IntSize.Zero) {
             ArcAction.entries.forEachIndexed { i, action ->
-                val (dx, dy) = BubbleGeometry.arcOffset(i, place.edge)
-                val half = BubbleGeometry.ARC_BUTTON / 2f
-                val enabled = action != ArcAction.MENUS || client.hasMenus
-                val lit = when (action) {
-                    ArcAction.APPS -> overlay == Overlay.APPS
-                    ArcAction.WINDOWS -> sheetOpen
-                    ArcAction.MENUS -> overlay == Overlay.MENUS
-                    ArcAction.SCALE -> overlay == Overlay.SCALE
-                    ArcAction.KEYBOARD -> keyboardUp
-                    ArcAction.SETTINGS -> overlay == Overlay.SETTINGS
-                }
-                Box(
-                    Modifier.offset { IntOffset(((cxDp + dx * progress - half) * d).roundToInt(), ((cyDp + dy * progress - half) * d).roundToInt()) }
-                        .alpha(progress.coerceIn(0f, 1f) * if (enabled) 1f else 0.4f)
-                        .size(BubbleGeometry.ARC_BUTTON.dp).clip(CircleShape)
-                        .background(if (lit) SillColors.accent.copy(alpha = 0.28f) else SillColors.surfaceHigh)
-                        .border(1.dp, if (lit) SillColors.accent else SillColors.outline, CircleShape)
-                        .clickable(enabled = enabled, onClickLabel = action.label) {
-                            arcOpen = false
-                            when (action) {
-                                ArcAction.APPS -> { sheetOpen = false; onOpen(Overlay.APPS) }
-                                ArcAction.WINDOWS -> { closeOverlay(); sheetOpen = !sheetOpen }
-                                ArcAction.MENUS -> { sheetOpen = false; onOpen(Overlay.MENUS) }
-                                ArcAction.SCALE -> { sheetOpen = false; onOpen(Overlay.SCALE) }
-                                ArcAction.KEYBOARD -> { sheetOpen = false; onKeyboard() }
-                                ArcAction.SETTINGS -> { sheetOpen = false; onOpen(Overlay.SETTINGS) }
-                            }
-                        },
-                    contentAlignment = Alignment.Center,
+                ArcItem(
+                    index = i, action = action, edge = place.edge, cx = cxDp, cy = cyDp, d = d, area = area, open = arcOpen,
+                    enabled = action != ArcAction.MENUS || client.hasMenus,
+                    lit = when (action) {
+                        ArcAction.APPS -> overlay == Overlay.APPS
+                        ArcAction.WINDOWS -> sheetOpen
+                        ArcAction.MENUS -> overlay == Overlay.MENUS
+                        ArcAction.SCALE -> overlay == Overlay.SCALE
+                        ArcAction.KEYBOARD -> keyboardUp
+                        ArcAction.SETTINGS -> overlay == Overlay.SETTINGS
+                    },
                 ) {
-                    val tint = if (lit) SillColors.accent else Color.White
+                    arcOpen = false
                     when (action) {
-                        ArcAction.SCALE -> Text("Aa", fontSize = 19.sp, fontWeight = FontWeight.SemiBold, color = tint)
-                        else -> Icon(arcIcon(action), action.label, Modifier.size(24.dp), tint = tint)
+                        ArcAction.APPS -> { sheetOpen = false; onOpen(Overlay.APPS) }
+                        ArcAction.WINDOWS -> { closeOverlay(); sheetOpen = !sheetOpen }
+                        ArcAction.MENUS -> { sheetOpen = false; onOpen(Overlay.MENUS) }
+                        ArcAction.SCALE -> { sheetOpen = false; onOpen(Overlay.SCALE) }
+                        ArcAction.KEYBOARD -> { sheetOpen = false; onKeyboard() }
+                        ArcAction.SETTINGS -> { sheetOpen = false; onOpen(Overlay.SETTINGS) }
                     }
                 }
-                // The name, outward from the button: to its right on a button that points right, to its left when
-                // it points left, above or below one that points up or down.
-                val r = Math.toRadians(BubbleGeometry.angleDegrees(i, place.edge))
-                val cs = cos(r).toFloat(); val sn = sin(r).toFloat()
-                val lx = cxDp + cs * (BubbleGeometry.RADIUS + 34f) * progress
-                val ly = cyDp + sn * (BubbleGeometry.RADIUS + 34f) * progress
-                val ax = if (cs > 0.35f) 0f else if (cs < -0.35f) 1f else 0.5f
-                val ay = if (kotlin.math.abs(cs) > 0.35f) 0.5f else if (sn < 0f) 1f else 0f
-                Text(
-                    action.label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color.White,
-                    modifier = Modifier
-                        .alpha((progress * progress).coerceIn(0f, 1f) * if (enabled) 1f else 0.4f)
-                        .layout { m, c ->
-                            val p = m.measure(c)
-                            val x = (lx * d - p.width * ax).coerceIn(6f * d, (area.width - 6f * d - p.width).coerceAtLeast(6f * d))
-                            val y = (ly * d - p.height * ay).coerceIn(6f * d, (area.height - 6f * d - p.height).coerceAtLeast(6f * d))
-                            layout(p.width, p.height) { p.place(x.roundToInt(), y.roundToInt()) }
-                        }
-                        .clip(RoundedCornerShape(12.dp)).background(Color(0xF0111214)).border(1.dp, SillColors.outline, RoundedCornerShape(12.dp))
-                        .padding(horizontal = 9.dp, vertical = 3.dp),
-                )
             }
         }
 
@@ -322,4 +293,74 @@ private fun AnchoredPanel(place: BubblePlace, cx: Float, cy: Float, gap: Float, 
         }
         layout(w, h) { p.place(x.roundToInt(), y.roundToInt()) }
     }
+}
+
+private const val ARC_OPEN_MS = 300
+private const val ARC_CLOSE_MS = 150
+private const val ARC_STAGGER_MS = 32
+
+/**
+ * One button of the arc and its name. The buttons leave the bubble one after the other, slowing into
+ * place, and go back together and faster. The name never travels with its button: it waits for the button
+ * to land, then fades in beside it with a short slide outward, which reads as the button introducing itself.
+ */
+@Composable
+private fun ArcItem(
+    index: Int, action: ArcAction, edge: BubbleEdge, cx: Float, cy: Float, d: Float, area: IntSize,
+    open: Boolean, enabled: Boolean, lit: Boolean, onClick: () -> Unit,
+) {
+    // Composed already open, a value would start at its target and not animate at all: start closed, then open.
+    var go by remember { mutableStateOf(false) }
+    LaunchedEffect(open) { go = open }
+    val p by animateFloatAsState(
+        if (go) 1f else 0f,
+        if (go) tween(ARC_OPEN_MS, index * ARC_STAGGER_MS, FastOutSlowInEasing) else tween(ARC_CLOSE_MS, 0, FastOutLinearInEasing),
+        label = "arcButton$index",
+    )
+    val l by animateFloatAsState(
+        if (go) 1f else 0f,
+        if (go) tween(210, ARC_OPEN_MS / 2 + index * ARC_STAGGER_MS, LinearOutSlowInEasing) else tween(80),
+        label = "arcLabel$index",
+    )
+    val (dx, dy) = BubbleGeometry.arcOffset(index, edge)
+    val half = BubbleGeometry.ARC_BUTTON / 2f
+    val dim = if (enabled) 1f else 0.4f
+    Box(
+        Modifier.offset { IntOffset(((cx + dx * p - half) * d).roundToInt(), ((cy + dy * p - half) * d).roundToInt()) }
+            .graphicsLayer { val s = 0.55f + 0.45f * p; scaleX = s; scaleY = s; alpha = p.coerceIn(0f, 1f) * dim }
+            .size(BubbleGeometry.ARC_BUTTON.dp).clip(CircleShape)
+            .background(if (lit) SillColors.accent.copy(alpha = 0.28f) else SillColors.surfaceHigh)
+            .border(1.dp, if (lit) SillColors.accent else SillColors.outline, CircleShape)
+            .clickable(enabled = enabled, onClickLabel = action.label, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        val tint = if (lit) SillColors.accent else Color.White
+        when (action) {
+            ArcAction.SCALE -> Text("Aa", fontSize = 19.sp, fontWeight = FontWeight.SemiBold, color = tint)
+            else -> Icon(arcIcon(action), action.label, Modifier.size(24.dp), tint = tint)
+        }
+    }
+
+    // The name sits outward from the button: to its right on a button that points right, to its left when it
+    // points left, above or below one that points up or down; kept on screen.
+    val r = Math.toRadians(BubbleGeometry.angleDegrees(index, edge))
+    val cs = cos(r).toFloat(); val sn = sin(r).toFloat()
+    val reach = BubbleGeometry.RADIUS + BubbleGeometry.ARC_BUTTON / 2f + 10f - 8f * (1f - l)
+    val lx = cx + cs * reach
+    val ly = cy + sn * reach
+    val ax = if (cs > 0.35f) 0f else if (cs < -0.35f) 1f else 0.5f
+    val ay = if (kotlin.math.abs(cs) > 0.35f) 0.5f else if (sn < 0f) 1f else 0f
+    Text(
+        action.label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color.White,
+        modifier = Modifier
+            .graphicsLayer { alpha = l.coerceIn(0f, 1f) * dim }
+            .layout { m, c ->
+                val t = m.measure(c)
+                val x = (lx * d - t.width * ax).coerceIn(6f * d, (area.width - 6f * d - t.width).coerceAtLeast(6f * d))
+                val y = (ly * d - t.height * ay).coerceIn(6f * d, (area.height - 6f * d - t.height).coerceAtLeast(6f * d))
+                layout(t.width, t.height) { t.place(x.roundToInt(), y.roundToInt()) }
+            }
+            .clip(RoundedCornerShape(14.dp)).background(Color(0xE6111214))
+            .padding(horizontal = 11.dp, vertical = 5.dp),
+    )
 }
