@@ -439,6 +439,9 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         route = null
     }
 
+    /** Decodes the Mac's pictures (thumbnails, icons, the cursor) off the reader thread. */
+    private val images = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "sill-images").apply { isDaemon = true } }
+
     // MARK: Session.Listener
 
     override fun onMessage(session: Session, msg: Message) {
@@ -448,17 +451,25 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
                 decoder.onFrame(msg.payload, msg.isKeyframe, msg.timestamp)
             }
             Kind.PARAMETER_SETS -> ParameterSets.parse(msg.payload)?.let { params = it; decoder.onParameterSets(it) }
+            // Pictures are decoded on their own thread, in arrival order: a JPEG or PNG decode on this one
+            // (the reader's) holds up the video frame behind it for as long as it takes.
             Kind.THUMBNAIL -> Blobs.thumbnail(msg.payload)?.let { t ->
-                val bmp = BitmapFactory.decodeByteArray(t.jpeg, 0, t.jpeg.size)?.asImageBitmap() ?: return
-                main.post { if (session === this.session) thumbnails[t.windowID] = bmp }
+                images.execute {
+                    val bmp = BitmapFactory.decodeByteArray(t.jpeg, 0, t.jpeg.size)?.asImageBitmap() ?: return@execute
+                    main.post { if (session === this.session) thumbnails[t.windowID] = bmp }
+                }
             }
             Kind.APP_ICON -> Blobs.icon(msg.payload)?.let { i ->
-                val bmp = BitmapFactory.decodeByteArray(i.png, 0, i.png.size)?.asImageBitmap() ?: return
-                main.post { icons[i.bundleID] = bmp }
+                images.execute {
+                    val bmp = BitmapFactory.decodeByteArray(i.png, 0, i.png.size)?.asImageBitmap() ?: return@execute
+                    main.post { icons[i.bundleID] = bmp }
+                }
             }
             Kind.CURSOR_SHAPE -> Blobs.cursorShape(msg.payload)?.let { c ->
-                val bmp = BitmapFactory.decodeByteArray(c.png, 0, c.png.size)?.asImageBitmap() ?: return
-                main.post { if (session === this.session) cursor = CursorSprite(bmp, c.hotX, c.hotY, c.width, c.height) }
+                images.execute {
+                    val bmp = BitmapFactory.decodeByteArray(c.png, 0, c.png.size)?.asImageBitmap() ?: return@execute
+                    main.post { if (session === this.session) cursor = CursorSprite(bmp, c.hotX, c.hotY, c.width, c.height) }
+                }
             }
             Kind.MAC_POINTER -> MacPointer.parse(msg.payload)?.let { p ->
                 // Stale when built before the Mac read this device's latest input, or a move still waits.

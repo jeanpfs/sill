@@ -61,6 +61,25 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Android 10 (API 29) or later: TLS 1.3 and ALPN on `SSLSocket` are what the Mac's doors require.
 
+## Installing for daily use (performance)
+
+Install the **release** build and have ART compile it at once. A debug build is 63 MB, runs with a
+debuggable runtime and holds about 220 MB; the release build is 3 MB and holds about 130 MB. And a freshly
+installed app interprets its code until ART has compiled it in the background (days, on a phone that is
+used), which is where the first opening of a rail or the deck drops frames:
+
+```
+./gradlew assembleRelease
+adb install -r app/build/outputs/apk/release/app-release.apk
+adb shell cmd package compile -m speed -f me.saffer.sill.android
+```
+
+Measured on a Z Fold8 opening and closing the side rails 8 times over a stream: 6.8% of the frames
+janky and 24 ms at the 99th percentile right after install, 1.6% and 9 ms after the compile above.
+Streaming costs about 10% of one core either way (60% of it is the system's MediaCodec); the app's own
+reader and decoder threads take about 1% each.
+
+
 ## How it maps to the iOS app
 
 | Android | iOS / shared |

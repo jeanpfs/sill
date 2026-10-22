@@ -120,22 +120,38 @@ class VideoDecoder(private val events: Events) {
         return pts
     }
 
-    /** Input queued → output rendered, per pts (decode latency, the HUD's "dec"). */
-    private val queuedAt = HashMap<Long, Long>()
+    /**
+     * Input queued → output rendered, per pts (decode latency, the HUD's "dec"). Outputs come in input
+     * order (there are no B-frames), so a ring of the last 128 inputs is enough, and no frame boxes a Long.
+     */
+    private val queuedPts = LongArray(RING)
+    private val queuedNs = LongArray(RING)
+    private var ringHead = 0
+    private var ringCount = 0
     private var latencySum = 0L
     private var latencyCount = 0
     @Volatile var decodeLatencyMs = -1
         private set
 
+    private fun noteQueued(ptsUs: Long, nanos: Long) {
+        if (ringCount == RING) { ringHead = (ringHead + 1) and (RING - 1); ringCount-- }
+        val i = (ringHead + ringCount) and (RING - 1)
+        queuedPts[i] = ptsUs; queuedNs[i] = nanos
+        ringCount++
+    }
+
     private fun noteOutput(ptsUs: Long) {
-        val t = queuedAt.remove(ptsUs) ?: return
+        // Inputs that never came out (a flush, a dropped frame) are older than this output: forget them.
+        while (ringCount > 0 && queuedPts[ringHead] < ptsUs) { ringHead = (ringHead + 1) and (RING - 1); ringCount-- }
+        if (ringCount == 0 || queuedPts[ringHead] != ptsUs) return
+        val t = queuedNs[ringHead]
+        ringHead = (ringHead + 1) and (RING - 1); ringCount--
         latencySum += (System.nanoTime() - t) / 1_000_000
         latencyCount++
         if (latencyCount >= 30) {
             decodeLatencyMs = (latencySum / latencyCount).toInt()
             latencySum = 0; latencyCount = 0
         }
-        if (queuedAt.size > 120) queuedAt.clear()
     }
 
     fun release() = handler.post {
@@ -163,6 +179,7 @@ class VideoDecoder(private val events: Events) {
         codec = null
         freeInputs.clear()
         pending.clear()
+        ringHead = 0; ringCount = 0
         needKeyframe = true
     }
 
@@ -279,7 +296,7 @@ class VideoDecoder(private val events: Events) {
                     continue
                 }
                 buf.put(f.data)
-                queuedAt[f.ptsUs] = System.nanoTime()
+                noteQueued(f.ptsUs, System.nanoTime())
                 c.queueInputBuffer(index, 0, f.data.size, f.ptsUs, if (f.key) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0)
             } catch (e: Exception) {
                 Log.w(TAG, "queueInputBuffer: ${e.message}")
@@ -289,6 +306,8 @@ class VideoDecoder(private val events: Events) {
 
     companion object {
         private const val TAG = "SillVideo"
+        /** A power of two: the decode-latency ring's size. */
+        private const val RING = 128
 
         /** The best decoder that takes this size: hardware first, then software. */
         fun decoderFor(w: Int, h: Int): String? {

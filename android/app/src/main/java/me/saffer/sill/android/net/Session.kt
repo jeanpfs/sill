@@ -49,7 +49,9 @@ class Session(val conn: TlsConnection, private val deviceLabel: String, private 
 
     // This second's samples.
     private var frames = 0
-    private val ages = ArrayList<Int>()
+    /** This second's frame ages, unboxed: a frame arrives up to 120 times a second. */
+    private var ages = IntArray(256)
+    private var ageCount = 0
     private val rtts = ArrayList<Int>()
     /** The worst round trip of the last second that had a pong; 0 until one does. */
     @Volatile var worstRecentRttMs = 0
@@ -125,7 +127,11 @@ class Session(val conn: TlsConnection, private val deviceLabel: String, private 
     /** A frame arrived: its age (host clock to this one, approximate across devices). */
     fun noteFrame(hostTimestamp: Double) {
         val age = ((Wire.now() - hostTimestamp) * 1000).toInt().coerceAtLeast(0)
-        synchronized(lock) { frames++; ages.add(age) }
+        synchronized(lock) {
+            frames++
+            if (ageCount == ages.size) ages = ages.copyOf(ages.size * 2)
+            ages[ageCount++] = age
+        }
     }
 
     fun close(why: String? = null) = end(why, closeSocket = true)
@@ -197,16 +203,16 @@ class Session(val conn: TlsConnection, private val deviceLabel: String, private 
         if (ended.get()) return
         val stats: LinkStats
         synchronized(lock) {
-            val a = ages.sorted(); val r = rtts.sorted()
+            val a = ages.copyOf(ageCount).also { it.sort() }; val r = rtts.sorted()
             stats = LinkStats(
                 fps = frames,
                 frameAgeMs = if (a.isEmpty()) -1 else a[a.size / 2],
-                frameAgeMaxMs = a.lastOrNull() ?: -1,
+                frameAgeMaxMs = if (a.isEmpty()) -1 else a[a.size - 1],
                 rttMs = if (r.isEmpty()) -1 else r[r.size / 2],
                 rttMaxMs = r.lastOrNull() ?: -1,
             )
             if (r.isNotEmpty()) worstRecentRttMs = r.last()
-            frames = 0; ages.clear(); rtts.clear()
+            frames = 0; ageCount = 0; rtts.clear()
         }
         lastStats = stats
         sendJson(Kind.CLIENT_STATS, Payloads.clientStats(stats.fps, stats.frameAgeMs, stats.rttMs, deviceLabel, stats.frameAgeMaxMs, stats.rttMaxMs))
