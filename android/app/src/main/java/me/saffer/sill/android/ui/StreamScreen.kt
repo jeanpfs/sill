@@ -135,7 +135,6 @@ fun StreamScreen(client: SillClient) {
         client = client, overlay = overlay, keyboardUp = keyboardWanted || imeVisible,
         onApps = { open(Overlay.APPS) }, onSettings = { open(Overlay.SETTINGS) }, onMenus = { open(Overlay.MENUS) },
         onScale = { open(Overlay.SCALE) }, onKeyboard = { toggleKeyboard() },
-        onDesktop = { client.select(StreamSource.Desktop) },
     )
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
@@ -232,10 +231,10 @@ fun StreamScreen(client: SillClient) {
 class BarActions(
     val client: SillClient, val overlay: Overlay, val keyboardUp: Boolean,
     val onApps: () -> Unit, val onSettings: () -> Unit, val onMenus: () -> Unit, val onScale: () -> Unit,
-    val onKeyboard: () -> Unit, val onDesktop: () -> Unit,
+    val onKeyboard: () -> Unit,
 )
 
-/** The bar sideways and on a tablet upright: Apps, the thumbnails, Menus, Aa, Keyboard, Desktop, Settings. */
+/** The bar sideways and on a tablet upright: Apps, the thumbnails (the Desktop first), Menus, Aa, Keyboard, Settings. */
 @Composable
 private fun LandscapeBar(a: BarActions) {
     Row(
@@ -248,7 +247,6 @@ private fun LandscapeBar(a: BarActions) {
         if (a.client.hasMenus) BarButton(Icons.Filled.Menu, "Menus", a.overlay == Overlay.MENUS, a.onMenus)
         ScaleButton(a.client, a.overlay == Overlay.SCALE, a.onScale)
         BarButton(Icons.Filled.Keyboard, if (a.keyboardUp) "Hide the keyboard" else "Show the keyboard", a.keyboardUp, a.onKeyboard)
-        BarButton(Icons.Filled.DesktopMac, "Desktop", a.client.active == StreamSource.Desktop, a.onDesktop)
         BarButton(Icons.Filled.Tune, "Settings", a.overlay == Overlay.SETTINGS, a.onSettings)
     }
 }
@@ -260,7 +258,6 @@ private fun PhoneButtons(a: BarActions) {
         WideButton(Icons.Filled.Apps, "Apps", a.overlay == Overlay.APPS, a.onApps)
         WideButton(null, "Aa", a.overlay == Overlay.SCALE, a.onScale, label = a.client.textScale?.let { scaleLabel(it) } ?: "Aa")
         WideButton(Icons.Filled.Keyboard, "Keyboard", a.keyboardUp, a.onKeyboard)
-        WideButton(Icons.Filled.DesktopMac, "Desktop", a.client.active == StreamSource.Desktop, a.onDesktop)
         if (a.client.hasMenus) WideButton(Icons.Filled.Menu, "Menus", a.overlay == Overlay.MENUS, a.onMenus)
         WideButton(Icons.Filled.Tune, "Settings", a.overlay == Overlay.SETTINGS, a.onSettings)
     }
