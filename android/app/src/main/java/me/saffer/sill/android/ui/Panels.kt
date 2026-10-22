@@ -39,6 +39,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -60,11 +61,16 @@ import me.saffer.sill.android.protocol.SettingsChange
 import me.saffer.sill.android.protocol.StreamSource
 import me.saffer.sill.android.video.VideoDecoder
 
+/** True where panels open as a full-width sheet from the bottom (the upright screen), not as a card. */
+val LocalSheetPanels = compositionLocalOf { false }
+
 @Composable
 private fun PanelFrame(modifier: Modifier, title: String, onDone: () -> Unit, back: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+    val sheet = LocalSheetPanels.current
     Column(
-        modifier.padding(8.dp).widthIn(max = 380.dp).fillMaxWidth().heightIn(max = 640.dp)
-            .clip(RoundedCornerShape(18.dp)).background(Color(0xFF1C1D20))
+        (if (sheet) modifier.fillMaxWidth().heightIn(max = 560.dp).clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+        else modifier.padding(8.dp).widthIn(max = 380.dp).fillMaxWidth().heightIn(max = 640.dp).clip(RoundedCornerShape(18.dp)))
+            .background(Color(0xFF1C1D20))
             .clickable(interactionSource = null, indication = null) {},   // taps inside never reach the scrim
     ) {
         Row(Modifier.fillMaxWidth().padding(start = if (back != null) 4.dp else 18.dp, end = 6.dp, top = 6.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -136,6 +142,39 @@ private fun Header(text: String) {
     Text(text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = SillColors.secondaryText, modifier = Modifier.padding(start = 18.dp, top = 14.dp, bottom = 4.dp))
 }
 
+/** What Settings says first: the running stream, the away quality, a link that cannot keep up, the encoder. */
+@Composable
+internal fun SettingsStatus(client: SillClient) {
+    val state = client.hostState
+    val running = state?.stream
+    Text(
+        listOfNotNull(
+            running?.let { "${it.width}×${it.height}" }, running?.let { "${it.fps} fps" }, running?.let { "${it.mbps} Mbps" },
+            client.route, client.stats?.rttMs?.takeIf { it >= 0 }?.let { "$it ms" },
+        ).joinToString(" · ").ifEmpty { "Connected" },
+        fontSize = 13.sp, color = SillColors.secondaryText,
+    )
+    state?.away?.let { a ->
+        Text(
+            if (a.awayRunning) "Away: ${QualityPreset.shortTitle(a.awayBitrate, a.awayCaptureScale)}"
+            else if (a.thisConnectionAway) "Home quality: ${QualityPreset.shortTitle(a.homeBitrate, a.homeCaptureScale)} (a device at home is connected)"
+            else "Home quality",
+            fontSize = 13.sp, color = SillColors.accent,
+        )
+    }
+    state?.link?.takeIf { it.isBehind }?.let { link ->
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0x33FFB020)).padding(12.dp)) {
+            val cur = QualityPreset.name(link.bitrate)
+            val sug = link.suggestedBitrate?.let { QualityPreset.shortTitle(it, link.suggestedCaptureScale ?: 1.0) }
+            Text("The link can’t carry $cur." + (sug?.let { " $it is recommended." } ?: ""), fontSize = 14.sp)
+            if (link.suggestedBitrate != null) TextButton(onClick = {
+                client.changeSettings(SettingsChange(bitrate = link.suggestedBitrate, captureScale = link.suggestedCaptureScale))
+            }) { Text("Use $sug") }
+        }
+    }
+    if (state?.softwareEncoder == true) Note("${client.macName}’s hardware encoder is busy or not responding, so for now streams run at up to 60 fps at Standard.")
+}
+
 /**
  * The Settings panel (HostSettingsPanel.swift): the Mac's streaming settings as its menu shows them
  * (only a control's action ever sends, kind 17), this device's own, and Disconnect.
@@ -147,33 +186,7 @@ fun SettingsPanel(client: SillClient, modifier: Modifier, onDone: () -> Unit, on
     val state = client.hostState
     PanelFrame(modifier, client.macName, onDone) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 18.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            val running = state?.stream
-            Text(
-                listOfNotNull(
-                    running?.let { "${it.width}×${it.height}" }, running?.let { "${it.fps} fps" }, running?.let { "${it.mbps} Mbps" },
-                    client.route, client.stats?.rttMs?.takeIf { it >= 0 }?.let { "$it ms" },
-                ).joinToString(" · ").ifEmpty { "Connected" },
-                fontSize = 13.sp, color = SillColors.secondaryText,
-            )
-            state?.away?.let { a ->
-                Text(
-                    if (a.awayRunning) "Away: ${QualityPreset.shortTitle(a.awayBitrate, a.awayCaptureScale)}"
-                    else if (a.thisConnectionAway) "Home quality: ${QualityPreset.shortTitle(a.homeBitrate, a.homeCaptureScale)} (a device at home is connected)"
-                    else "Home quality",
-                    fontSize = 13.sp, color = SillColors.accent,
-                )
-            }
-            state?.link?.takeIf { it.isBehind }?.let { link ->
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0x33FFB020)).padding(12.dp)) {
-                    val cur = QualityPreset.name(link.bitrate)
-                    val sug = link.suggestedBitrate?.let { QualityPreset.shortTitle(it, link.suggestedCaptureScale ?: 1.0) }
-                    Text("The link can’t carry $cur." + (sug?.let { " $it is recommended." } ?: ""), fontSize = 14.sp)
-                    if (link.suggestedBitrate != null) TextButton(onClick = {
-                        client.changeSettings(SettingsChange(bitrate = link.suggestedBitrate, captureScale = link.suggestedCaptureScale))
-                    }) { Text("Use $sug") }
-                }
-            }
-            if (state?.softwareEncoder == true) Note("${client.macName}’s hardware encoder is busy or not responding, so for now streams run at up to 60 fps at Standard.")
+            SettingsStatus(client)
             if (s == null) {
                 Text(if (client.hasSettings) "" else "Update Sill on ${client.macName} to change its settings from here.", fontSize = 14.sp, color = SillColors.secondaryText)
             } else {
@@ -226,8 +239,8 @@ fun SettingsPanel(client: SillClient, modifier: Modifier, onDone: () -> Unit, on
     }
 }
 
-@Composable private fun Group(t: String) = Text(t, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = SillColors.secondaryText, modifier = Modifier.padding(top = 12.dp))
-@Composable private fun Note(t: String) = Text(t, fontSize = 12.sp, color = SillColors.tertiaryText, lineHeight = 16.sp)
+@Composable internal fun Group(t: String) = Text(t, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = SillColors.secondaryText, modifier = Modifier.padding(top = 12.dp))
+@Composable internal fun Note(t: String) = Text(t, fontSize = 12.sp, color = SillColors.tertiaryText, lineHeight = 16.sp)
 
 @Composable
 private fun Choice(label: String, selected: Boolean, pending: Boolean = false, onClick: () -> Unit) {
@@ -239,7 +252,7 @@ private fun Choice(label: String, selected: Boolean, pending: Boolean = false, o
 }
 
 @Composable
-private fun Toggle(label: String, on: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+internal fun Toggle(label: String, on: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, fontSize = 15.sp, modifier = Modifier.weight(1f), color = if (enabled) Color.White else SillColors.tertiaryText)
         Switch(checked = on, onCheckedChange = onChange, enabled = enabled)

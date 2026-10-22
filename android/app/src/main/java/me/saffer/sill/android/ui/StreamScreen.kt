@@ -202,11 +202,13 @@ fun StreamScreen(client: SillClient) {
                     panel = { panelContent(Modifier) },
                 )
             }
-            wide -> Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-                VideoPanel(client, Modifier.weight(1f).fillMaxWidth().padding(8.dp), onTouched = closePanel, onTapped = { tapped++ })
-                LandscapeBar(bar)
-                KeyRow(client, latch, full = true, onKeyboard = { toggleKeyboard() }, keyboardUp = keyboardWanted || imeVisible)
-                Trackpad(client, latch, Modifier.weight(1f).fillMaxWidth().padding(8.dp), span = null)
+            // Upright on a tablet or an open Fold: the picture on top and one deck under it, where the thumbs are.
+            wide -> Box(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
+                PortraitDeckScreen(
+                    client = client, latch = latch, overlay = overlay, keyboardUp = keyboardWanted || imeVisible,
+                    onOpen = { open(it) }, onCloseOverlay = { overlay = Overlay.NONE }, onKeyboard = { toggleKeyboard() },
+                    onTapped = { tapped++ }, onTouched = closePanel, panel = { panelContent(it) },
+                )
             }
             else -> Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout).navigationBarsPadding()) {
                 // The picture in a fixed 16:10 pane: nothing below it moves when windows change.
@@ -223,15 +225,11 @@ fun StreamScreen(client: SillClient) {
 
         // Panels over the stream: sideways under the bar; a phone upright under the picture, so a
         // change shows in it; a tablet upright under the picture's half. A tap outside closes.
-        val panelTop = when {
-            !portrait -> 0.dp
-            !wide -> maxWidth / 1.6f + 8.dp
-            else -> 0.dp
-        }
-        if (portrait && overlay != Overlay.NONE) Box(Modifier.fillMaxSize().padding(top = panelTop).background(Color(0x66000000))
+        val panelTop = if (portrait && !wide) maxWidth / 1.6f + 8.dp else 0.dp
+        if (portrait && !wide && overlay != Overlay.NONE) Box(Modifier.fillMaxSize().padding(top = panelTop).background(Color(0x66000000))
             .clickable(interactionSource = null, indication = null) { overlay = Overlay.NONE })
         // Upright, the panel hangs from a corner; sideways the bubble's layer places it beside the bubble.
-        if (portrait) Box(Modifier.fillMaxSize().padding(top = panelTop)) {
+        if (portrait && !wide) Box(Modifier.fillMaxSize().padding(top = panelTop)) {
             panelContent(Modifier.align(if (overlay == Overlay.APPS) Alignment.TopStart else Alignment.TopEnd))
         }
 
@@ -277,23 +275,6 @@ class BarActions(
     val onKeyboard: () -> Unit,
 )
 
-/** The bar sideways and on a tablet upright: Apps, the thumbnails (the Desktop first), Menus, Aa, Keyboard, Settings. */
-@Composable
-private fun LandscapeBar(a: BarActions) {
-    Row(
-        Modifier.fillMaxWidth().height(56.dp).background(SillColors.bar)
-            .windowInsetsPadding(WindowInsets.displayCutout.only(androidx.compose.foundation.layout.WindowInsetsSides.Horizontal)).padding(horizontal = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        BarButton(Icons.Filled.Apps, "Apps", a.overlay == Overlay.APPS, a.onApps)
-        Strip(a.client, Modifier.weight(1f).fillMaxHeight().padding(vertical = 5.dp))
-        if (a.client.hasMenus) BarButton(Icons.Filled.Menu, "Menus", a.overlay == Overlay.MENUS, a.onMenus)
-        ScaleButton(a.client, a.overlay == Overlay.SCALE, a.onScale)
-        BarButton(Icons.Filled.Keyboard, if (a.keyboardUp) "Hide the keyboard" else "Show the keyboard", a.keyboardUp, a.onKeyboard)
-        BarButton(Icons.Filled.Tune, "Settings", a.overlay == Overlay.SETTINGS, a.onSettings)
-    }
-}
-
 /** Row 1 of a phone upright: the bar's buttons, widened to the row. */
 @Composable
 private fun PhoneButtons(a: BarActions) {
@@ -318,26 +299,6 @@ private fun RowScope.WideButton(icon: ImageVector?, description: String, lit: Bo
             else Text(label ?: description, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, color = if (lit) SillColors.accent else Color.White)
             Text(description, fontSize = 10.sp, color = SillColors.secondaryText, maxLines = 1)
         }
-    }
-}
-
-@Composable
-private fun BarButton(icon: ImageVector, description: String, lit: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.padding(horizontal = 2.dp).size(44.dp).clip(RoundedCornerShape(10.dp))
-            .background(if (lit) SillColors.accent.copy(alpha = 0.25f) else Color.Transparent).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Icon(icon, description, tint = if (lit) SillColors.accent else Color.White) }
-}
-
-@Composable
-private fun ScaleButton(client: SillClient, lit: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.padding(horizontal = 2.dp).height(44.dp).width(52.dp).clip(RoundedCornerShape(10.dp))
-            .background(if (lit) SillColors.accent.copy(alpha = 0.25f) else Color.Transparent).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(client.textScale?.let { scaleLabel(it) } ?: "Aa", fontWeight = FontWeight.SemiBold, fontSize = 17.sp, color = if (lit) SillColors.accent else Color.White)
     }
 }
 
@@ -418,7 +379,7 @@ private fun Dot(c: Color) = Box(Modifier.size(12.dp).clip(CircleShape).backgroun
  * arrows, the keyboard key and, while the Desktop streams, Spotlight (⌘Space).
  */
 @Composable
-private fun KeyRow(client: SillClient, latch: Latch, full: Boolean, onKeyboard: () -> Unit, keyboardUp: Boolean) {
+internal fun KeyRow(client: SillClient, latch: Latch, full: Boolean, onKeyboard: () -> Unit, keyboardUp: Boolean) {
     Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Cap("esc") { client.press(Keys.ESCAPE, latch.mods); latch.spend() }
         Cap("tab") { client.press(Keys.TAB, latch.mods); latch.spend() }
@@ -438,7 +399,7 @@ private fun KeyRow(client: SillClient, latch: Latch, full: Boolean, onKeyboard: 
 }
 
 @Composable
-private fun RowScope.Cap(label: String, lit: Boolean = false, onClick: () -> Unit) {
+internal fun RowScope.Cap(label: String, lit: Boolean = false, onClick: () -> Unit) {
     Box(
         Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(8.dp))
             .background(if (lit) SillColors.accent else SillColors.surfaceHigh).clickable(onClick = onClick),
@@ -447,7 +408,7 @@ private fun RowScope.Cap(label: String, lit: Boolean = false, onClick: () -> Uni
 }
 
 @Composable
-private fun RowScope.CapIcon(icon: ImageVector, description: String, lit: Boolean = false, onClick: () -> Unit) {
+internal fun RowScope.CapIcon(icon: ImageVector, description: String, lit: Boolean = false, onClick: () -> Unit) {
     Box(
         Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(8.dp))
             .background(if (lit) SillColors.accent else SillColors.surfaceHigh).clickable(onClick = onClick),
@@ -456,7 +417,7 @@ private fun RowScope.CapIcon(icon: ImageVector, description: String, lit: Boolea
 }
 
 @Composable
-private fun Trackpad(client: SillClient, latch: Latch, modifier: Modifier, span: Dp?) {
+internal fun Trackpad(client: SillClient, latch: Latch, modifier: Modifier, span: Dp?) {
     val density = androidx.compose.ui.platform.LocalDensity.current
     AndroidView(
         factory = { ctx -> TrackpadView(ctx, client) },
