@@ -303,12 +303,30 @@ private fun ScaleButton(client: SillClient, lit: Boolean, onClick: () -> Unit) {
 
 fun scaleLabel(s: Double) = when (s) { 0.5 -> "½×"; 0.75 -> "¾×"; 1.0 -> "1×"; 1.25 -> "1¼×"; 1.5 -> "1½×"; else -> "${s}×" }
 
-/** The windows' thumbnails, in the Mac's order; a tap streams one, a long press shows its window's buttons. */
+/** The Desktop first, then the windows' thumbnails, in the Mac's order; a tap streams one, a long press shows its window's buttons. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Strip(client: SillClient, modifier: Modifier) {
     LazyRow(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        item(key = "desktop") { DesktopTile(client) }
         items(client.windows, key = { it.id }) { w -> Thumb(client, w) }
+    }
+}
+
+/** The whole Mac desktop as the strip's first square: lit while it streams, which it does when a session starts. */
+@Composable
+private fun DesktopTile(client: SillClient) {
+    val active = client.active == StreamSource.Desktop
+    Box(
+        Modifier.fillMaxHeight().aspectRatio(1.45f).clip(RoundedCornerShape(8.dp))
+            .border(if (active) 2.dp else 1.dp, if (active) SillColors.accent else SillColors.outline, RoundedCornerShape(8.dp))
+            .background(SillColors.surfaceHigh)
+            .clickable(onClickLabel = "Stream the Desktop") { client.select(StreamSource.Desktop) },
+    ) {
+        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Filled.DesktopMac, null, Modifier.size(24.dp), tint = if (active) SillColors.accent else Color.White)
+            Text("Desktop", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = if (active) SillColors.accent else Color.White)
+        }
     }
 }
 
