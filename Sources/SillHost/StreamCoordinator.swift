@@ -578,6 +578,7 @@ package final class StreamCoordinator {
     /// call raises the system's Screen Recording alert. That should follow a click in Settings or
     /// a device connecting, not a login.
     package func start(preselect: String?, promptForPermissions: Bool = true) async {
+        textFocus.scope = { [weak self] in self?.textFocusScope() ?? .nothing }
         for line in testHookLines { print(line) }
         if let line = clipboard.testHookLine { print(line) }   // TEST ONLY, and only with one of its variables set
         if !synthetic, promptForPermissions { InputInjector.ensureAccessibility() }   // prompts once; input is dropped silently without it
@@ -1747,6 +1748,20 @@ package final class StreamCoordinator {
 
     /// Retina normally; points when the software encoder is carrying the stream.
     private var captureScale: CGFloat { useSoftwareEncoder ? min(scale, 1.0) : scale }
+
+    /// Whose text focus a device hears: the app of the window it is shown (a keyboard must not rise for a
+    /// terminal in front on the Mac while the device watches Slack), or whatever is in front for the Desktop.
+    /// A window held on the virtual display is not in front either way, so it reads as the Desktop's.
+    private func textFocusScope() -> TextFocusScope {
+        switch active {
+        case .none: return .nothing
+        case .desktop: return .desktop
+        case .window(let id):
+            if virtualDisplay, stage.isStaged { return .desktop }
+            guard let pid = catalog.window(id: id)?.owningApplication?.processID else { return .desktop }
+            return .app(pid)
+        }
+    }
 
     /// The scale a source `points` big is captured at: the configured one, but never beyond the
     /// device panel's own pixels per point (`Viewport.captureScale`). A frame the panel cannot show

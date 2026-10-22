@@ -52,6 +52,30 @@ public struct TextFocus: Codable, Hashable, Sendable {
     public static var stopping: Data { Data(#"{"stop":true}"#.utf8) }
 }
 
+/// What a device is shown, which decides whose text focus it may hear.
+public enum TextFocusScope: Equatable, Sendable {
+    /// Nothing streams.
+    case nothing
+    /// The whole Desktop: the app in front is what the device sees.
+    case desktop
+    /// One app's window (the process id of the app that owns it).
+    case app(Int32)
+}
+
+extension TextFocus {
+    /// The focus a device is told: the text focus of the app it is shown. A text field in another app (a
+    /// terminal in front on the Mac while the device watches Slack) says nothing about what the device
+    /// shows, so the keyboard must not rise for it. `frontmost` is the process id of the app the focus was
+    /// read from, nil when it could not be told.
+    public static func scoped(_ focus: TextFocus, frontmost: Int32?, scope: TextFocusScope) -> TextFocus {
+        switch scope {
+        case .nothing: return .unfocused
+        case .desktop: return focus
+        case .app(let pid): return frontmost == pid ? focus : .unfocused
+        }
+    }
+}
+
 /// The subscriptions and what each subscriber was last sent: the state machine behind the host's
 /// TextFocusWatcher, pure so the check can drive it. `ID` is a connection's identity.
 public struct TextFocusTracker<ID: Hashable> {

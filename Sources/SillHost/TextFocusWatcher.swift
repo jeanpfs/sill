@@ -17,6 +17,9 @@ final class TextFocusWatcher {
     /// The Accessibility reader; nil on a synthetic host, which never reads the Mac's focus and reports
     /// it unfocused.
     private let focus: AccessibilityFocus?
+    /// What the device is shown, which decides whose focus it hears (`TextFocus.scoped`): set by the
+    /// coordinator, which knows the streamed source. A host that has not set it treats it as the Desktop.
+    var scope: @MainActor () -> TextFocusScope = { .desktop }
     private var tracker = TextFocusTracker<ObjectIdentifier>()
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private var look: Task<Void, Never>?
@@ -72,7 +75,8 @@ final class TextFocusWatcher {
     /// sent and the last state stands.
     private func readState() async -> TextFocus? {
         guard let focus else { return .unfocused }
-        return await focus.read()
+        guard let reading = await focus.read() else { return nil }
+        return TextFocus.scoped(reading.focus, frontmost: reading.pid, scope: scope())
     }
 
     private func observed(_ state: TextFocus?) {
@@ -98,8 +102,14 @@ final class AccessibilityFocus: @unchecked Sendable {
     /// The failures already put in the log; on `queue`.
     private var noted: Set<String> = []
 
+    /// What one read found: the focus, and the process id of the app in front it was read from.
+    struct Reading: Sendable {
+        var focus: TextFocus
+        var pid: Int32
+    }
+
     /// The Mac's focus now, or nil when it could not be read. On `queue`, one read at a time.
-    func read() async -> TextFocus? {
+    func read() async -> Reading? {
         await withCheckedContinuation { done in
             queue.async { done.resume(returning: self.readNow()) }
         }
@@ -115,7 +125,7 @@ final class AccessibilityFocus: @unchecked Sendable {
         }
     }
 
-    private func readNow() -> TextFocus? {
+    private func readNow() -> Reading? {
         let system = AXUIElementCreateSystemWide()
         AXUIElementSetMessagingTimeout(system, Self.timeout)
         let app = attribute(system, "AXFocusedApplication")
@@ -134,14 +144,14 @@ final class AccessibilityFocus: @unchecked Sendable {
         let focused = attribute(system, "AXFocusedUIElement")
         switch focused.error {
         case .success:
-            guard let value = focused.value else { return .unfocused }
+            guard let value = focused.value else { return Reading(focus: .unfocused, pid: pid) }
             let element = value as! AXUIElement
             AXUIElementSetMessagingTimeout(element, Self.timeout)
-            return TextFocus.classify(role: attribute(element, "AXRole").value as? String,
-                                      subrole: attribute(element, "AXSubrole").value as? String,
-                                      editable: attribute(element, "AXEditable").value as? Bool)
+            return Reading(focus: TextFocus.classify(role: attribute(element, "AXRole").value as? String,
+                                                     subrole: attribute(element, "AXSubrole").value as? String,
+                                                     editable: attribute(element, "AXEditable").value as? Bool), pid: pid)
         case .noValue:
-            return .unfocused
+            return Reading(focus: .unfocused, pid: pid)
         default:
             note("the focused element: AX error \(focused.error.rawValue)")
             return nil

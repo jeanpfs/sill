@@ -13,13 +13,17 @@ func check(_ ok: Bool, _ what: @autoclosure () -> String, line: Int = #line) {
     }
 }
 func json<T: Encodable>(_ value: T) -> String { String(decoding: Wire.encode(value), as: UTF8.self) }
+/// The encoded value as a dictionary: key order in the encoder's output is not fixed, so compare content.
+func object<T: Encodable>(_ value: T) -> NSDictionary {
+    ((try? JSONSerialization.jsonObject(with: Wire.encode(value))) as? NSDictionary) ?? [:]
+}
 
 // MARK: Wire names and round trip
 
-check(json(TextFocus(focused: true)) == #"{"focused":true}"#, "a focused field is {\"focused\":true}: \(json(TextFocus(focused: true)))")
-check(json(TextFocus(focused: true, secure: true)) == #"{"focused":true,"secure":true}"#,
+check(object(TextFocus(focused: true)) == ["focused": true], "a focused field is {\"focused\":true}: \(json(TextFocus(focused: true)))")
+check(object(TextFocus(focused: true, secure: true)) == ["focused": true, "secure": true],
       "a password field carries secure: \(json(TextFocus(focused: true, secure: true)))")
-check(json(TextFocus.unfocused) == #"{"focused":false}"#, "no field: secure left out: \(json(TextFocus.unfocused))")
+check(object(TextFocus.unfocused) == ["focused": false], "no field: secure left out: \(json(TextFocus.unfocused))")
 for state in [TextFocus.unfocused, TextFocus(focused: true), TextFocus(focused: true, secure: true)] {
     check(Wire.decode(TextFocus.self, from: Wire.encode(state)) == state, "round trip of \(json(state))")
 }
@@ -130,6 +134,24 @@ do {
     _ = t.unsubscribe(1)
     _ = t.subscribe(1)
     check(t.observe(typing).map(\.id) == [1], "a stopped device that subscribes again is sent the state")
+}
+
+// MARK: whose focus a device hears (TextFocus.scoped)
+
+do {
+    let typing = TextFocus(focused: true)
+    let secure = TextFocus(focused: true, secure: true)
+    let slack: Int32 = 101, warp: Int32 = 202
+    check(TextFocus.scoped(typing, frontmost: warp, scope: .app(slack)) == .unfocused,
+          "a text field in the terminal in front says nothing to a device that is shown Slack")
+    check(TextFocus.scoped(typing, frontmost: slack, scope: .app(slack)) == typing,
+          "a text field in the app the device is shown is heard")
+    check(TextFocus.scoped(secure, frontmost: slack, scope: .app(slack)) == secure, "and a password field keeps its secure flag")
+    check(TextFocus.scoped(.unfocused, frontmost: slack, scope: .app(slack)) == .unfocused, "no text field in the shown app is no focus")
+    check(TextFocus.scoped(typing, frontmost: nil, scope: .app(slack)) == .unfocused, "an app in front that could not be told is not the shown one")
+    check(TextFocus.scoped(typing, frontmost: warp, scope: .desktop) == typing, "the Desktop shows whatever is in front, so its text field counts")
+    check(TextFocus.scoped(typing, frontmost: nil, scope: .desktop) == typing, "the Desktop does not need the app's process id")
+    check(TextFocus.scoped(typing, frontmost: slack, scope: .nothing) == .unfocused, "nothing streaming has no text focus")
 }
 
 print("\(checks) checks, \(failures) failed")
