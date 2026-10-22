@@ -58,6 +58,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -76,6 +77,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.delay
 import me.saffer.sill.android.client.Keys
 import me.saffer.sill.android.client.SillClient
 import me.saffer.sill.android.protocol.KeyMods
@@ -123,6 +125,19 @@ fun StreamScreen(client: SillClient) {
             if (!imeNow && !keyboardWanted) { overlay = Overlay.NONE; keyboardWanted = true; autoOpened = true; s.show() }
         } else if (autoOpened) {
             autoOpened = false; keyboardWanted = false; s.hide()
+        }
+    }
+    // A terminal (Terminal, Warp, iTerm) keeps a text area focused the whole time it is in front, so its focus
+    // never changes to say "the person clicked the prompt". A click is that: a tap on the picture, with a text
+    // field focused and the keyboard away, brings it back. The wait lets the Mac's answer to this very click
+    // arrive first (a click on a button moves the focus away from the text).
+    var tapped by remember { mutableIntStateOf(0) }
+    LaunchedEffect(tapped) {
+        if (tapped == 0) return@LaunchedEffect
+        delay(450)
+        val s = sink ?: return@LaunchedEffect
+        if (client.autoKeyboard && client.macTextFocused && !imeNow && !keyboardWanted) {
+            overlay = Overlay.NONE; keyboardWanted = true; autoOpened = true; s.show()
         }
     }
 
@@ -174,7 +189,7 @@ fun StreamScreen(client: SillClient) {
             // Sideways (a Fold open, a tablet, a phone on its side): no bar. The picture has the whole screen and
             // the controls are one bubble the person puts where the thumb reaches.
             !portrait -> Box(Modifier.fillMaxSize().then(if (imeVisible) Modifier.imePadding() else Modifier)) {
-                VideoPanel(client, Modifier.fillMaxSize(), reportSize = !imeVisible, onTouched = closePanel)
+                VideoPanel(client, Modifier.fillMaxSize(), reportSize = !imeVisible, onTouched = closePanel, onTapped = { tapped++ })
                 if (overlay != Overlay.NONE) Box(Modifier.fillMaxSize().background(Color(0x66000000))
                     .clickable(interactionSource = null, indication = null) { overlay = Overlay.NONE })
                 CommandBubbleLayer(
@@ -184,14 +199,14 @@ fun StreamScreen(client: SillClient) {
                 )
             }
             wide -> Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-                VideoPanel(client, Modifier.weight(1f).fillMaxWidth().padding(8.dp), onTouched = closePanel)
+                VideoPanel(client, Modifier.weight(1f).fillMaxWidth().padding(8.dp), onTouched = closePanel, onTapped = { tapped++ })
                 LandscapeBar(bar)
                 KeyRow(client, latch, full = true, onKeyboard = { toggleKeyboard() }, keyboardUp = keyboardWanted || imeVisible)
                 Trackpad(client, latch, Modifier.weight(1f).fillMaxWidth().padding(8.dp), span = null)
             }
             else -> Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout).navigationBarsPadding()) {
                 // The picture in a fixed 16:10 pane: nothing below it moves when windows change.
-                VideoPanel(client, Modifier.fillMaxWidth().padding(8.dp).aspectRatio(1.6f), onTouched = closePanel)
+                VideoPanel(client, Modifier.fillMaxWidth().padding(8.dp).aspectRatio(1.6f), onTouched = closePanel, onTapped = { tapped++ })
                 PhoneButtons(bar)
                 Strip(client, Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 6.dp))
                 KeyRow(client, latch, full = false, onKeyboard = { toggleKeyboard() }, keyboardUp = keyboardWanted || imeVisible)
