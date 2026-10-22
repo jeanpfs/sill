@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +29,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import me.saffer.sill.android.client.SillClient
 import me.saffer.sill.android.ui.input.DirectTouchView
+import me.saffer.sill.android.ui.input.StreamZoom
+import me.saffer.sill.android.ui.input.ZoomFrame
 import kotlin.math.roundToInt
 
 /** The video aspect-fit into the panel, centred, in pixels. */
@@ -48,7 +52,14 @@ fun fitRect(panel: IntSize, video: Pair<Int, Int>?): RectF? {
 fun VideoPanel(client: SillClient, modifier: Modifier, reportSize: Boolean = true, touch: Boolean = true, onTouched: () -> Boolean = { false }) {
     val density = LocalDensity.current
     var panel by remember { mutableStateOf(IntSize.Zero) }
-    val rect = fitRect(panel, client.videoSize)
+    var zoom by remember { mutableStateOf(StreamZoom.IDENTITY) }
+    val fit = fitRect(panel, client.videoSize)
+    // The picture as shown: the aspect fit, enlarged by the pinch. Touch, pointer sprite and decoder
+    // surface all follow this one rect, so a tap lands under the finger at any zoom.
+    val rect = fit?.let { f ->
+        val z = zoom.frame(ZoomFrame(f.left, f.top, f.width(), f.height()), panel.width.toFloat(), panel.height.toFloat())
+        RectF(z.left, z.top, z.left + z.width, z.top + z.height)
+    }
     Box(
         modifier.clipToBounds().onSizeChanged { size ->
             panel = size
@@ -68,13 +79,19 @@ fun VideoPanel(client: SillClient, modifier: Modifier, reportSize: Boolean = tru
                         })
                     }
                 },
-                modifier = Modifier.offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }.size(w, h),
+                // wrapContentSize(unbounded): a zoomed picture is larger than the panel, and a plain size() would be cut to it.
+                modifier = Modifier.offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }.wrapContentSize(Alignment.TopStart, unbounded = true).size(w, h),
             )
         }
         if (touch) {
             AndroidView(
                 factory = { ctx -> DirectTouchView(ctx, client) },
-                update = { v -> v.videoRect = rect ?: RectF(); v.onTouchedPicture = onTouched },
+                update = { v ->
+                    v.videoRect = rect ?: RectF(); v.onTouchedPicture = onTouched
+                    v.onPinch = { k, x, y, dx, dy ->
+                        if (fit != null) zoom = zoom.pinch(k, x, y, dx, dy, ZoomFrame(fit.left, fit.top, fit.width(), fit.height()), panel.width.toFloat(), panel.height.toFloat())
+                    }
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }

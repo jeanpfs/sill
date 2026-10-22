@@ -13,6 +13,7 @@ import android.view.View
 import me.saffer.sill.android.client.SillClient
 import me.saffer.sill.android.protocol.PointerAction
 import me.saffer.sill.android.protocol.ScrollPhase
+import kotlin.math.abs
 import kotlin.math.hypot
 
 /**
@@ -29,6 +30,12 @@ class DirectTouchView(context: Context, private val client: SillClient) : View(c
 
     /** A touch landed on the picture; true when it closed a panel, and then it clicks nothing (iOS's tap catcher). */
     var onTouchedPicture: (() -> Boolean)? = null
+
+    /**
+     * Two fingers spread or closed (factor, around x/y, the midpoint's move dx/dy, all in this view's
+     * pixels): the picture's zoom. The picture's frame is then `videoRect`, already zoomed.
+     */
+    var onPinch: ((factor: Float, x: Float, y: Float, dx: Float, dy: Float) -> Unit)? = null
     private var swallowing = false
     private var lastPointer = 0.5 to 0.5
 
@@ -38,10 +45,11 @@ class DirectTouchView(context: Context, private val client: SillClient) : View(c
     private val strokes = StrokeGestures(density)
     private var velocity: VelocityTracker? = null
 
-    private enum class State { IDLE, POSSIBLE, SCROLLING, DONE, SILENT }
+    private enum class State { IDLE, POSSIBLE, SCROLLING, ZOOMING, DONE, SILENT }
     private var state = State.IDLE
     private var downX = 0f; private var downY = 0f
     private var lastCx = 0f; private var lastCy = 0f
+    private var lastSpan = 0f
     private var scrollAt = 0.5 to 0.5
     private var pointerButton: PointerAction? = null
 
@@ -64,6 +72,7 @@ class DirectTouchView(context: Context, private val client: SillClient) : View(c
     init {
         isFocusable = false
     }
+
 
     private fun fraction(x: Float, y: Float, clamped: Boolean): Pair<Double, Double>? {
         val r = videoRect
@@ -110,16 +119,28 @@ class DirectTouchView(context: Context, private val client: SillClient) : View(c
                     if (state == State.SCROLLING) client.scrollPhase(ScrollPhase.ENDED, scrollAt.first, scrollAt.second)
                     state = State.SILENT
                 } else {
-                    val (cx, cy) = centroid(e, -1); lastCx = cx; lastCy = cy
+                    val (cx, cy) = centroid(e, -1); lastCx = cx; lastCy = cy; lastSpan = span(e, -1)
                 }
             }
             MotionEvent.ACTION_MOVE -> {
                 for (i in 0 until e.pointerCount) strokes.move(e.getPointerId(i), e.getX(i), e.getY(i), t)
                 if (state == State.SILENT || state == State.DONE || state == State.IDLE) return true
                 val (cx, cy) = centroid(e, -1)
+                if (state == State.ZOOMING) {
+                    if (e.pointerCount < 2) return true
+                    val sp = span(e, -1)
+                    if (lastSpan > 0f && sp > 0f) onPinch?.invoke(sp / lastSpan, cx, cy, cx - lastCx, cy - lastCy)
+                    lastSpan = sp; lastCx = cx; lastCy = cy
+                    return true
+                }
                 if (state == State.POSSIBLE) {
                     if (hypot(e.x - downX, e.y - downY) < slop && e.pointerCount == 1) return true
-                    if (e.pointerCount > 1 && hypot(cx - lastCx, cy - lastCy) < slop) return true
+                    if (e.pointerCount > 1 && hypot(cx - lastCx, cy - lastCy) < slop) {
+                        // Fingers that mostly spread or close, rather than travel, are a pinch.
+                        if (e.pointerCount == 2 && abs(span(e, -1) - lastSpan) > slop) beginZoom(e, cx, cy)
+                        return true
+                    }
+                    if (e.pointerCount == 2 && abs(span(e, -1) - lastSpan) > hypot(cx - lastCx, cy - lastCy)) { beginZoom(e, cx, cy); return true }
                     handler.removeCallbacks(longPress)
                     state = State.SCROLLING
                     scrollAt = fraction(cx, cy, clamped = true) ?: (0.5 to 0.5)
@@ -136,7 +157,7 @@ class DirectTouchView(context: Context, private val client: SillClient) : View(c
                     client.gesture(name, fingers)
                 }
                 if (state != State.SILENT) {
-                    val (cx, cy) = centroid(e, i); lastCx = cx; lastCy = cy
+                    val (cx, cy) = centroid(e, i); lastCx = cx; lastCy = cy; lastSpan = span(e, i)
                 }
             }
             MotionEvent.ACTION_UP -> {
@@ -177,6 +198,19 @@ class DirectTouchView(context: Context, private val client: SillClient) : View(c
         var sx = 0f; var sy = 0f; var n = 0
         for (i in 0 until e.pointerCount) if (i != skip) { sx += e.getX(i); sy += e.getY(i); n++ }
         return if (n == 0) e.x to e.y else sx / n to sy / n
+    }
+
+    /** The distance between the first two fingers still down, leaving out `skip`; 0 with fewer than two. */
+    private fun span(e: MotionEvent, skip: Int): Float {
+        var a = -1; var b = -1
+        for (i in 0 until e.pointerCount) if (i != skip) { if (a < 0) a = i else if (b < 0) b = i }
+        return if (b < 0) 0f else hypot(e.getX(a) - e.getX(b), e.getY(a) - e.getY(b))
+    }
+
+    private fun beginZoom(e: MotionEvent, cx: Float, cy: Float) {
+        handler.removeCallbacks(longPress)
+        state = State.ZOOMING
+        lastSpan = span(e, -1); lastCx = cx; lastCy = cy
     }
 
     /** A mouse, a trackpad's pointer or the S Pen: the Mac's pointer, buttons and all. */
