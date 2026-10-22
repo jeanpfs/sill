@@ -186,9 +186,10 @@ fun SettingsPanel(client: SillClient, modifier: Modifier, onDone: () -> Unit, on
                 if (QualityPreset.entries.none { it.bitrate == s.bitrate }) Text("Custom — ${QualityPreset.mbps(s.bitrate)} Mbps", fontSize = 14.sp, color = SillColors.secondaryText)
                 Note("Ultra and Extreme need very fast Wi‑Fi; if the picture lags, step down.")
                 Group("Resolution")
-                Choice("Retina", s.captureScale >= 1.5) { client.changeSettings(SettingsChange(captureScale = 2.0)) }
-                Choice("Standard", s.captureScale < 1.5) { client.changeSettings(SettingsChange(captureScale = 1.0)) }
-                VideoDecoder.largestHardwareSize()?.let { (w, h) -> Note("This device decodes up to ${w}×$h; a larger stream drops to Standard by itself.") }
+                Choice("Retina", s.captureScale >= 1.5) { client.chooseResolution(retina = true) }
+                Choice("Standard", s.captureScale < 1.5) { client.chooseResolution(retina = false) }
+                Note("The Mac sends at most this panel’s own pixels, so Retina costs only what this screen can show. " +
+                    "A stream this device cannot decode drops to Standard by itself.")
                 Group("Frame Rate")
                 Choice("60 fps", s.maxFPS == 60) { client.changeSettings(SettingsChange(maxFPS = 60)) }
                 Choice("120 fps", s.maxFPS == 120) { client.changeSettings(SettingsChange(maxFPS = 120)) }

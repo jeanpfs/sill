@@ -144,6 +144,7 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     private var lastUserPickAt = 0L
     private var previousActive: StreamSource = StreamSource.None
     private var panel: Pair<Double, Double>? = null
+    private var panelPx: Pair<Int, Int>? = null
     var textScale by mutableStateOf<Double?>(null); private set
     private var lastViewportJson: String? = null
     private var viewportPending: Runnable? = null
@@ -407,7 +408,7 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         sessionReady = false
         windows = emptyList(); active = StreamSource.None; previousActive = StreamSource.None
         thumbnails.clear(); apps = emptyList(); videoSize = null; cursor = null; stats = null
-        hasSettings = false; hostState = null; shownSettings = null; ledger.reset(); settingsRevision++
+        hasSettings = false; hostState = null; shownSettings = null; ledger.reset(); settingsRevision++; resolutionAsked = false
         menuState.reset(); menuRevision++; hasMenus = false
         macPointer = null; pointerHere = true
         lastViewportJson = null
@@ -564,7 +565,33 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         hostState = state
         if (refused.isNotEmpty()) notice("$macName kept its setting.")
         refreshSettings()
+        val undecodable = unsupportedSize
         unsupportedSize?.let { (w, h) -> unsupportedSize = null; handleUnsupported(w, h) }
+        askForSharpResolution(undecodable == null)
+    }
+
+    private var resolutionAsked = false
+
+    /**
+     * A Mac streams at Standard (1× points) unless told otherwise, and away from home that is the
+     * default: a 740-point window then crosses the link at 740 pixels and this panel stretches it
+     * threefold, which is the blur. So once a session this device asks for Retina. The Mac captures
+     * no more than this panel's own pixels (Viewport.pixelWidth), so the stream costs what the panel
+     * can show and no more. A person's own Standard (`chooseResolution`) is kept, and a decoder that
+     * could not take the stream has already put it back to Standard.
+     */
+    private fun askForSharpResolution(decodable: Boolean) {
+        if (resolutionAsked || !decodable || panelPx == null) return
+        resolutionAsked = true
+        if (prefs.getBoolean("standardChosen", false)) return
+        if ((ledger.shown?.captureScale ?: return) >= 1.5) return
+        changeSettings(SettingsChange(captureScale = 2.0))
+    }
+
+    /** The Resolution choice in Settings: remembered, so the automatic Retina does not undo a Standard. */
+    fun chooseResolution(retina: Boolean) {
+        prefs.edit().putBoolean("standardChosen", !retina).apply()
+        changeSettings(SettingsChange(captureScale = if (retina) 2.0 else 1.0))
     }
 
     private fun refreshSettings() {
@@ -642,10 +669,15 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     }
 
     /** The stream panel's size in dp, as Viewport's width and height (device points). */
-    fun setPanel(widthDp: Double, heightDp: Double) {
-        if (panel == widthDp to heightDp) return
+    fun setPanel(widthDp: Double, heightDp: Double, widthPx: Int, heightPx: Int) {
+        if (panel == widthDp to heightDp && panelPx == widthPx to heightPx) return
+        // The first measure goes out at once: the Retina ask below must reach the Mac after it, or the
+        // Mac starts a full Retina capture before it knows this panel's pixels.
+        val first = panelPx == null
         panel = widthDp to heightDp
-        sendViewport(immediately = false)
+        panelPx = widthPx to heightPx
+        sendViewport(immediately = first)
+        if (hasSettings) askForSharpResolution(unsupportedSize == null)
     }
 
     fun chooseTextScale(scale: Double?) {
@@ -668,7 +700,8 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
             val s = session ?: return@Runnable
             if (!sessionReady) return@Runnable
             val (w, h) = panel ?: return@Runnable
-            val json = Payloads.viewport(w, h, textScale, wantedFps())
+            val (pw, ph) = panelPx ?: return@Runnable
+            val json = Payloads.viewport(w, h, textScale, wantedFps(), pw, ph)
             if (json == lastViewportJson) return@Runnable
             lastViewportJson = json
             s.sendJson(Kind.VIEWPORT, json)

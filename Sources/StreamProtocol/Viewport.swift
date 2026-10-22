@@ -20,9 +20,33 @@ public struct Viewport: Codable, Hashable {
     /// The host runs the stream at the highest rate among its connected clients and restarts the
     /// pipeline when that changes.
     public var fps: Int?
+    /// The panel's size in device pixels (what `width` and `height` are in points). With it the host
+    /// never captures more pixels than the device can show: a source `p` points big streams at
+    /// min(the configured capture scale, the panel's pixels per source point), so text arrives at
+    /// the device's own pixel grid, sharp where a fixed 1× would be upscaled and blurred, and
+    /// without the cost of a Retina frame the panel cannot show. nil (an older client) keeps the
+    /// configured scale as it is.
+    public var pixelWidth: Int?
+    public var pixelHeight: Int?
 
-    public init(width: Double, height: Double, scale: Double?, localCursor: Bool? = nil, fps: Int? = nil) {
+    public init(width: Double, height: Double, scale: Double?, localCursor: Bool? = nil, fps: Int? = nil,
+                pixelWidth: Int? = nil, pixelHeight: Int? = nil) {
         self.width = width; self.height = height; self.scale = scale; self.localCursor = localCursor; self.fps = fps
+        self.pixelWidth = pixelWidth; self.pixelHeight = pixelHeight
+    }
+}
+
+extension Viewport {
+    /// The scale a source `pointsWidth` × `pointsHeight` Mac points big is captured at: `ceiling` (the
+    /// configured capture scale, 1 or 2) unless the panel has fewer pixels per source point than that,
+    /// then those, rounded down to 1/1000 so the frame never has more pixels than the panel; never
+    /// below 1× (a Mac point is a pixel at least). With no pixel size (an older client) or an empty
+    /// source, `ceiling` as it is. At Standard (`ceiling` 1) nothing is ever raised.
+    public func captureScale(ceiling: Double, pointsWidth: Double, pointsHeight: Double) -> Double {
+        guard ceiling > 1, let pw = pixelWidth, let ph = pixelHeight, pw > 0, ph > 0,
+              pointsWidth > 0, pointsHeight > 0 else { return ceiling }
+        let fit = min(Double(pw) / pointsWidth, Double(ph) / pointsHeight)
+        return min(ceiling, max(1, (fit * 1000).rounded(.down) / 1000))
     }
 }
 

@@ -1151,6 +1151,13 @@ package final class StreamCoordinator {
             await select(.window(id))
             return
         }
+        // The panel's pixel size changed (a fold opened, a rotation) and the stream is at another
+        // size than the one it would be captured at now: one restart. The Desktop has no window to fit.
+        if case .desktop = active, let d = catalog.display,
+           capturedSizeIsStale(points: CGSize(width: CGFloat(d.width), height: CGFloat(d.height))) {
+            await select(.desktop)
+            return
+        }
         guard case .window(let id) = active, let w = catalog.window(id: id) else { return }
         // Aa back to Off: "leave the window as it is" means as it was before Sill sized it, so it goes
         // home now, as it does when it stops streaming, not only after the next app is picked.
@@ -1159,7 +1166,11 @@ package final class StreamCoordinator {
             await catalog.refreshWindows()
             return
         }
-        if fitToViewport(w) != nil { await catalog.refreshWindows() }
+        if fitToViewport(w) != nil {
+            await catalog.refreshWindows()
+        } else if capturedSizeIsStale(points: Self.liveBounds(of: id)?.size ?? w.frame.size) {
+            await select(active)
+        }
     }
 
     /// `--virtual-display`: how big the window should be on the virtual display and how big the
@@ -1391,7 +1402,8 @@ package final class StreamCoordinator {
                 if let resized = fitToViewport(w) { size = Self.liveBounds(of: id)?.size ?? resized }
                 describe = "\(w.owningApplication?.applicationName ?? "?") — \(w.title ?? "")\(useSoftwareEncoder ? " (software encoder)" : "")"
             }
-            width = evenPixels(size.width * captureScale); height = evenPixels(size.height * captureScale)
+            let sourceScale = sourceRect == nil ? captureScale(for: size) : captureScale   // staged: the display's own scale
+            width = evenPixels(size.width * sourceScale); height = evenPixels(size.height * sourceScale)
             // Staged on the virtual display, nothing is activated or raised on select: the window
             // cannot be covered there, and the AX moves that put it there touch no focus.
         case .desktop:
@@ -1419,7 +1431,8 @@ package final class StreamCoordinator {
                 } else {
                     filter = SCContentFilter(display: d, excludingWindows: [])
                 }
-                width = evenPixels(CGFloat(d.width) * captureScale); height = evenPixels(CGFloat(d.height) * captureScale)
+                let desktopScale = captureScale(for: CGSize(width: CGFloat(d.width), height: CGFloat(d.height)))
+                width = evenPixels(CGFloat(d.width) * desktopScale); height = evenPixels(CGFloat(d.height) * desktopScale)
                 describe = "the whole desktop\(useSoftwareEncoder ? " (software encoder)" : "")"
                 title = "Whole Desktop"; kind = .desktop
             }
@@ -1439,7 +1452,7 @@ package final class StreamCoordinator {
                 let fallback = "\(w.owningApplication?.applicationName ?? "?") — \(w.title ?? "")\(useSoftwareEncoder ? " (software encoder)" : "")"
                 do {
                     try await startPipeline(source: source, filter: SCContentFilter(desktopIndependentWindow: w), sourceRect: nil,
-                                            width: evenPixels(w.frame.width * captureScale), height: evenPixels(w.frame.height * captureScale),
+                                            width: evenPixels(w.frame.width * captureScale(for: w.frame.size)), height: evenPixels(w.frame.height * captureScale(for: w.frame.size)),
                                             describe: fallback, title: title, kind: kind)
                 } catch {
                     print("Could not start streaming \(fallback): \(error)")
@@ -1725,6 +1738,21 @@ package final class StreamCoordinator {
 
     /// Retina normally; points when the software encoder is carrying the stream.
     private var captureScale: CGFloat { useSoftwareEncoder ? min(scale, 1.0) : scale }
+
+    /// The scale a source `points` big is captured at: the configured one, but never beyond the
+    /// device panel's own pixels per point (`Viewport.captureScale`). A frame the panel cannot show
+    /// costs encode time, link and decode for nothing; one captured at the panel's grid shows text
+    /// without upscaling.
+    private func captureScale(for points: CGSize) -> CGFloat {
+        guard let v = viewport else { return captureScale }
+        return CGFloat(v.captureScale(ceiling: Double(captureScale), pointsWidth: Double(points.width), pointsHeight: Double(points.height)))
+    }
+
+    /// The running encoder is not at the size a source `points` big would be captured at now.
+    private func capturedSizeIsStale(points: CGSize) -> Bool {
+        let s = captureScale(for: points)
+        return evenPixels(points.width * s) != encoderWidth || evenPixels(points.height * s) != encoderHeight
+    }
 
     /// "Safari — Apple Developer" for the app's menu; just the app for an untitled window.
     private static func menuTitle(for w: SCWindow) -> String {
@@ -2226,8 +2254,7 @@ package final class StreamCoordinator {
                 return
             }
             // The encoder is fixed to one size, so a resized window means a fresh pipeline.
-            if let scw = catalog.window(id: id),
-               evenPixels(scw.frame.width * captureScale) != encoderWidth || evenPixels(scw.frame.height * captureScale) != encoderHeight {
+            if let scw = catalog.window(id: id), capturedSizeIsStale(points: scw.frame.size) {
                 _ = w
                 await select(active)
                 return

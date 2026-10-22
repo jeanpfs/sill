@@ -31,11 +31,16 @@ import me.saffer.sill.android.ui.input.StreamZoom
 import me.saffer.sill.android.ui.input.ZoomFrame
 import kotlin.math.roundToInt
 
-/** The video aspect-fit into the panel, centred, in pixels. */
+/**
+ * The video aspect-fit into the panel, centred, in pixels. A fit within half a percent of 1:1 is made
+ * exactly 1:1: the Mac captures at this panel's own pixels, and drawn a pixel larger or smaller the
+ * picture would be resampled, which is what softens text.
+ */
 fun fitRect(panel: IntSize, video: Pair<Int, Int>?): RectF? {
     val (vw, vh) = video ?: return null
     if (panel.width <= 0 || panel.height <= 0 || vw <= 0 || vh <= 0) return null
-    val s = minOf(panel.width / vw.toFloat(), panel.height / vh.toFloat())
+    var s = minOf(panel.width / vw.toFloat(), panel.height / vh.toFloat())
+    if (kotlin.math.abs(s - 1f) < 0.005f) s = 1f
     val w = vw * s; val h = vh * s
     val l = (panel.width - w) / 2f; val t = (panel.height - h) / 2f
     return RectF(l, t, l + w, t + h)
@@ -61,7 +66,7 @@ fun VideoPanel(client: SillClient, modifier: Modifier, reportSize: Boolean = tru
     Box(
         modifier.clipToBounds().onSizeChanged { size ->
             panel = size
-            if (reportSize && size.width > 0) with(density) { client.setPanel(size.width.toDp().value.toDouble(), size.height.toDp().value.toDouble()) }
+            if (reportSize && size.width > 0) with(density) { client.setPanel(size.width.toDp().value.toDouble(), size.height.toDp().value.toDouble(), size.width, size.height) }
         },
     ) {
         if (rect != null && fit != null) {

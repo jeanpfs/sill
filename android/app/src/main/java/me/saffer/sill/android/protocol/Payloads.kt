@@ -73,9 +73,13 @@ object Payloads {
 
     fun windowCommand(id: Long, action: String): String = JSONObject().put("id", id).put("action", action).toString()
 
-    /** Viewport.swift: the stream panel in device points (dp here), the Aa scale or none, the rate. */
-    fun viewport(width: Double, height: Double, scale: Double?, fps: Int, localCursor: Boolean = true): String {
+    /**
+     * Viewport.swift: the stream panel in device points (dp here) and in pixels, the Aa scale or none,
+     * the rate. The pixels let the Mac capture at this panel's own grid instead of a fixed 1× or 2×.
+     */
+    fun viewport(width: Double, height: Double, scale: Double?, fps: Int, pixelWidth: Int, pixelHeight: Int, localCursor: Boolean = true): String {
         val o = JSONObject().put("width", width).put("height", height).put("fps", fps).put("localCursor", localCursor)
+            .put("pixelWidth", pixelWidth).put("pixelHeight", pixelHeight)
         if (scale != null) o.put("scale", scale)
         return o.toString()
     }

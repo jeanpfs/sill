@@ -25,6 +25,28 @@ network**: a tap asks the Mac to show its code (as on iOS), then type it.
 Away from home the Mac streams at its **away quality** (Low · Standard unless changed); Settings on
 the device changes it like the Mac's own menu does.
 
+## Sharp text
+
+Text looked soft because the Mac streams a window at Standard (1 pixel per Mac point) unless told
+otherwise, away from home included, and a phone or tablet then stretches 740 pixels over 2 400 of
+its own. Two things fix it, and neither raises the bitrate:
+
+- The viewport (kind 9) carries the panel's size in **pixels** (`pixelWidth`, `pixelHeight`) next to
+  its size in dp. A Mac that knows it captures each source at the panel's own pixels per Mac point
+  (`Viewport.captureScale`), never above the configured scale and never below 1×: a Desktop of 1 512
+  points on a 2 418 px panel goes out at 2 418 × 1 570, not at 1 512 or at a 3 024 Retina frame the
+  panel could not show. An older Mac ignores the two fields; an older client leaves them out.
+- The device asks for **Retina** once per session (a person's own Standard in Settings is kept),
+  since the pixel size now keeps Retina as cheap as the panel allows. The picture is drawn exactly
+  1:1 when it fits within half a percent, so it is not resampled on the way to the screen.
+
+Measured on a Z Fold8 against a text window (Mac side 740 × 460 points): the stream went from
+740 × 460 to 1 480 × 920 and the 99th-percentile gradient of the text's edges from 45 to 111. Latency
+did not rise: runs of 15 s with the window repainting ten times a second gave a frame age of 0 ms
+median and 38–44 ms worst case after, against 15 and 99 ms before (the Tailscale round trip itself
+moves from run to run). At rest the text is as sharp at 4 Mbps as at 150: a still frame converges,
+so the bitrate only matters for motion.
+
 ## Building
 
 Needs a JDK 17 or later and the Android SDK with platform 37 (`sdkmanager "platforms;android-37.0"`).
