@@ -323,10 +323,10 @@ private fun DesktopTile(client: SillClient) {
             .background(SillColors.surfaceHigh)
             .clickable(onClickLabel = "Stream the Desktop") { client.select(StreamSource.Desktop) },
     ) {
-        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Filled.DesktopMac, null, Modifier.size(24.dp), tint = if (active) SillColors.accent else Color.White)
-            Text("Desktop", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = if (active) SillColors.accent else Color.White)
-        }
+        Icon(
+            Icons.Filled.DesktopMac, "Desktop", Modifier.align(Alignment.Center).size(28.dp),
+            tint = if (active) SillColors.accent else Color.White,
+        )
     }
 }
 
@@ -349,9 +349,9 @@ private fun Thumb(client: SillClient, w: WindowInfo) {
         ) {
             val thumb = client.thumbnails[w.id]
             if (thumb != null) Image(thumb, w.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            else Text(w.appName, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.Center).padding(4.dp))
+            else Text(w.appName, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.Center).padding(horizontal = 10.dp, vertical = 8.dp))
             client.icons[w.bundleID]?.let { icon ->
-                Image(icon, null, modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp).size(18.dp))
+                Image(icon, null, modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp).size(16.dp))
             }
         }
         DropdownMenu(expanded = lights, onDismissRequest = { lights = false }) {
