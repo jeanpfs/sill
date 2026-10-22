@@ -95,6 +95,8 @@ final class AccessibilityFocus: @unchecked Sendable {
     private let queue = DispatchQueue(label: "sill.text-focus", qos: .userInitiated)
     /// The apps this reader turned accessibility on for; on `queue`.
     private var enabled: Set<pid_t> = []
+    /// The failures already put in the log; on `queue`.
+    private var noted: Set<String> = []
 
     /// The Mac's focus now, or nil when it could not be read. On `queue`, one read at a time.
     func read() async -> TextFocus? {
@@ -117,7 +119,10 @@ final class AccessibilityFocus: @unchecked Sendable {
         let system = AXUIElementCreateSystemWide()
         AXUIElementSetMessagingTimeout(system, Self.timeout)
         let app = attribute(system, "AXFocusedApplication")
-        guard app.error == .success, let value = app.value else { return nil }
+        guard app.error == .success, let value = app.value else {
+            note("the frontmost app: AX error \(app.error.rawValue)")
+            return nil
+        }
         let application = value as! AXUIElement
         AXUIElementSetMessagingTimeout(application, Self.timeout)
         var pid: pid_t = 0
@@ -138,8 +143,16 @@ final class AccessibilityFocus: @unchecked Sendable {
         case .noValue:
             return .unfocused
         default:
+            note("the focused element: AX error \(focused.error.rawValue)")
             return nil
         }
+    }
+
+    /// One line in the log the first time a kind of read fails, so a host that cannot see the Mac's focus
+    /// (Accessibility off for this build, an app that does not answer) says so instead of staying silent.
+    private func note(_ what: String) {
+        guard noted.insert(what).inserted else { return }
+        print("Text focus: could not read \(what) (Accessibility granted to Sill?).")
     }
 
     private func attribute(_ element: AXUIElement, _ name: String) -> (value: CFTypeRef?, error: AXError) {
