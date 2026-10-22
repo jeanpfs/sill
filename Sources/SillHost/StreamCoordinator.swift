@@ -1152,6 +1152,13 @@ package final class StreamCoordinator {
             return
         }
         guard case .window(let id) = active, let w = catalog.window(id: id) else { return }
+        // Aa back to Off: "leave the window as it is" means as it was before Sill sized it, so it goes
+        // home now, as it does when it stops streaming, not only after the next app is picked.
+        if viewport?.scale == nil, fits.entries[id] != nil {
+            restoreFits(keeping: nil)
+            await catalog.refreshWindows()
+            return
+        }
         if fitToViewport(w) != nil { await catalog.refreshWindows() }
     }
 
