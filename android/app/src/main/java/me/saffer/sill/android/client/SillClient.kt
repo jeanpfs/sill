@@ -140,9 +140,9 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     }
     fun setHud(on: Boolean) { showHud = on; prefs.edit().putBoolean("hud", on).apply() }
 
-    /** A string the stream screen keeps between sessions (where the command bubble rests). */
-    fun uiPref(key: String): String? = prefs.getString(key, null)
-    fun setUiPref(key: String, value: String) { prefs.edit().putString(key, value).apply() }
+    /** The hand the controls rail sits under: the right edge for a right-handed person, the left for a left-handed one. */
+    var rightHanded by mutableStateOf(prefs.getBoolean("rightHanded", true)); private set
+    fun useRightHand(on: Boolean) { rightHanded = on; prefs.edit().putBoolean("rightHanded", on).apply() }
 
     // The pointer sprite (PointerPresence): the Mac's while the Mac or another device moved it last,
     // this device's own only for the trackpad.

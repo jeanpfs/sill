@@ -152,10 +152,16 @@ fun StreamScreen(client: SillClient) {
 
     // A touch on the picture while a panel is open closes the panel and clicks nothing.
     val closePanel: () -> Boolean = { if (overlay != Overlay.NONE) { overlay = Overlay.NONE; true } else false }
+    // Sideways, a rail that is out goes with it: a touch on the picture puts everything away and clicks nothing.
+    val rails = remember { RailsState() }
+    val closeSideways: () -> Boolean = {
+        if (overlay != Overlay.NONE || rails.anyOpen) { overlay = Overlay.NONE; rails.closeAll(); true } else false
+    }
 
     BackHandler(enabled = true) {
         when {
             overlay != Overlay.NONE -> overlay = Overlay.NONE
+            rails.anyOpen -> rails.closeAll()
             else -> confirmLeave = true
         }
     }
@@ -187,14 +193,12 @@ fun StreamScreen(client: SillClient) {
         )
         when {
             // Sideways (a Fold open, a tablet, a phone on its side): no bar. The picture has the whole screen and
-            // the controls are one bubble the person puts where the thumb reaches.
+            // the controls are two rails on the side edges, under the thumbs.
             !portrait -> Box(Modifier.fillMaxSize().then(if (imeVisible) Modifier.imePadding() else Modifier)) {
-                VideoPanel(client, Modifier.fillMaxSize(), reportSize = !imeVisible, onTouched = closePanel, onTapped = { tapped++ })
-                if (overlay != Overlay.NONE) Box(Modifier.fillMaxSize().background(Color(0x66000000))
-                    .clickable(interactionSource = null, indication = null) { overlay = Overlay.NONE })
-                CommandBubbleLayer(
-                    client = client, overlay = overlay, keyboardUp = keyboardWanted || imeVisible,
-                    onOpen = { open(it) }, onCloseOverlay = { overlay = Overlay.NONE }, onKeyboard = { toggleKeyboard() },
+                VideoPanel(client, Modifier.fillMaxSize(), reportSize = !imeVisible, onTouched = closeSideways, onTapped = { tapped++ })
+                SideRails(
+                    client = client, rails = rails, overlay = overlay, keyboardUp = keyboardWanted || imeVisible,
+                    onOpen = { open(it) }, onKeyboard = { toggleKeyboard() },
                     panel = { panelContent(Modifier) },
                 )
             }
@@ -390,13 +394,19 @@ private fun Thumb(client: SillClient, w: WindowInfo) {
                 Image(icon, null, modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp).size(16.dp))
             }
         }
-        DropdownMenu(expanded = lights, onDismissRequest = { lights = false }) {
-            Text(w.title.ifEmpty { w.appName }, fontSize = 13.sp, color = SillColors.secondaryText, maxLines = 1,
-                overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp).width(220.dp))
-            DropdownMenuItem(leadingIcon = { Dot(SillColors.close) }, text = { Text("Close Window") }, onClick = { lights = false; client.windowCommand(w.id, "close") })
-            DropdownMenuItem(leadingIcon = { Dot(SillColors.minimize) }, text = { Text("Minimize") }, onClick = { lights = false; client.windowCommand(w.id, "minimize") })
-            DropdownMenuItem(leadingIcon = { Dot(SillColors.zoom) }, text = { Text("Full Screen") }, onClick = { lights = false; client.windowCommand(w.id, "fullScreen") })
-        }
+        WindowMenu(client, w, lights) { lights = false }
+    }
+}
+
+/** A window's long-press menu: its Close, Minimize and Full Screen, as the Mac's traffic lights. */
+@Composable
+fun WindowMenu(client: SillClient, w: WindowInfo, expanded: Boolean, onDismiss: () -> Unit) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        Text(w.title.ifEmpty { w.appName }, fontSize = 13.sp, color = SillColors.secondaryText, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp).width(220.dp))
+        DropdownMenuItem(leadingIcon = { Dot(SillColors.close) }, text = { Text("Close Window") }, onClick = { onDismiss(); client.windowCommand(w.id, "close") })
+        DropdownMenuItem(leadingIcon = { Dot(SillColors.minimize) }, text = { Text("Minimize") }, onClick = { onDismiss(); client.windowCommand(w.id, "minimize") })
+        DropdownMenuItem(leadingIcon = { Dot(SillColors.zoom) }, text = { Text("Full Screen") }, onClick = { onDismiss(); client.windowCommand(w.id, "fullScreen") })
     }
 }
 

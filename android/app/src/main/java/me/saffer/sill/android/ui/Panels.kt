@@ -205,6 +205,10 @@ fun SettingsPanel(client: SillClient, modifier: Modifier, onDone: () -> Unit, on
                 if (state?.persistent == false) Note("Changes last until SillHost quits.")
             }
             Group("This ${deviceWord(androidx.compose.ui.platform.LocalContext.current)}")
+            Text("Controls Under", fontSize = 13.sp, color = SillColors.secondaryText)
+            Choice("Right Thumb", client.rightHanded) { client.useRightHand(true) }
+            Choice("Left Thumb", !client.rightHanded) { client.useRightHand(false) }
+            Note("Sideways, the controls rail sits on that edge and the windows on the other.")
             Toggle("Three-Finger Gestures", client.gesturesEnabled) { client.setGestures(it) }
             if (client.hostGestures < 1) Note("Update Sill on ${client.macName} for Mission Control, Spaces and more with three fingers.")
             else Note("Swipe up: Mission Control. Down: App Exposé. Left and right: Spaces. Pinch: Apps. Spread: Desktop.")
