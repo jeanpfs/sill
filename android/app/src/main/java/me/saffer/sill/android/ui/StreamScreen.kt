@@ -1,5 +1,6 @@
 package me.saffer.sill.android.ui
 
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -59,6 +60,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -89,6 +91,9 @@ import me.saffer.sill.android.ui.input.TrackpadView
 /** What is open over the stream: at most one panel at a time, as on iOS. */
 enum class Overlay { NONE, APPS, SETTINGS, MENUS, SCALE }
 
+/** A text focus that shows up this soon after a window was picked or a session began came with it, not from a click. */
+private const val SWITCH_QUIET_MS = 1500L
+
 /** The key row's latching modifiers (⌃ ⌥ ⌘ ⇧), spent by one key, click or drag. */
 class Latch {
     var mods by mutableStateOf(0L)
@@ -117,12 +122,17 @@ fun StreamScreen(client: SillClient) {
 
     // A text field takes focus on the Mac: the keyboard comes up by itself, and goes with the focus. Only a
     // keyboard this raised goes away by itself, and one the person put away stays away until the next focus.
+    // A focus that arrives with a switch (a window picked, a session just begun) is the app's own, not the
+    // person clicking into a field: it waits for a tap on the picture (below) instead of raising the keyboard.
     var autoOpened by remember { mutableStateOf(false) }
     val imeNow by rememberUpdatedState(imeVisible)
+    var switchedAt by remember { mutableLongStateOf(SystemClock.uptimeMillis()) }
+    LaunchedEffect(client.active) { switchedAt = SystemClock.uptimeMillis() }
     LaunchedEffect(client.macTextFocused, sink) {
         val s = sink ?: return@LaunchedEffect
         if (client.macTextFocused) {
-            if (!imeNow && !keyboardWanted) { overlay = Overlay.NONE; keyboardWanted = true; autoOpened = true; s.show() }
+            val arrivedWithSwitch = SystemClock.uptimeMillis() - switchedAt < SWITCH_QUIET_MS
+            if (!arrivedWithSwitch && !imeNow && !keyboardWanted) { overlay = Overlay.NONE; keyboardWanted = true; autoOpened = true; s.show() }
         } else if (autoOpened) {
             autoOpened = false; keyboardWanted = false; s.hide()
         }
