@@ -1,8 +1,6 @@
 package me.saffer.sill.android.ui
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -27,7 +25,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
@@ -49,9 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -69,6 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import me.saffer.sill.android.client.SillClient
 import me.saffer.sill.android.protocol.StreamSource
 import me.saffer.sill.android.protocol.WindowInfo
@@ -91,8 +87,7 @@ private val RailColor = Color(0xF0111214)
  * The stream's controls as two rails on the side edges (proposal B of the Fold redesign): the controls
  * under the dominant thumb and the Mac's windows under the other, each folded into a thin handle until a
  * tap on it or a swipe in from the edge brings it out, and folding away again after four seconds
- * untouched (a line on the inner edge drains meanwhile). A panel opens as a drawer beside the controls
- * rail. The picture has the whole screen.
+ * untouched. A panel opens as a drawer beside the controls rail. The picture has the whole screen.
  */
 @Composable
 fun SideRails(
@@ -114,13 +109,11 @@ fun SideRails(
     var menuFor by remember { mutableStateOf<Long?>(null) }
 
     // Four seconds untouched fold the rails away; a panel or a window's menu being open holds them.
-    val timer = remember { Animatable(1f) }
     LaunchedEffect(rails.controlsOpen, rails.windowsOpen, overlay, menuFor, rails.touches) {
         if (rails.anyOpen && overlay == Overlay.NONE && menuFor == null) {
-            timer.snapTo(1f)
-            timer.animateTo(0f, tween(RailGeometry.AUTO_HIDE_MS.toInt(), easing = LinearEasing))
+            delay(RailGeometry.AUTO_HIDE_MS)
             rails.closeAll()
-        } else timer.snapTo(1f)
+        }
     }
 
     val controlsSlide by animateFloatAsState(if (rails.controlsOpen) 1f else 0f, tween(280, easing = FastOutSlowInEasing), label = "controls")
@@ -135,10 +128,10 @@ fun SideRails(
         EdgeHandle(windowsSide, cy, 1f - windowsSlide, d, "Mostrar janelas") { rails.windowsOpen = true; rails.touch() }
 
         if (controlsSlide > 0.001f) EdgeAnchored(controlsSide, cy, controlsSlide, d) {
-            ControlsRail(controlsSide, timer.value, client, overlay, keyboardUp, onOpen, onKeyboard) { rails.touch() }
+            ControlsRail(controlsSide, client, overlay, keyboardUp, onOpen, onKeyboard) { rails.touch() }
         }
         if (windowsSlide > 0.001f) EdgeAnchored(windowsSide, cy, windowsSlide, d) {
-            WindowsRail(windowsSide, timer.value, client, areaH, menuFor, { menuFor = it }) { rails.touch() }
+            WindowsRail(windowsSide, client, areaH, menuFor, { menuFor = it }) { rails.touch() }
         }
 
         if (overlay != Overlay.NONE) Drawer(controlsSide, cy, d, content = panel)
@@ -214,42 +207,22 @@ private fun Drawer(side: Side, centerY: Float, d: Float, content: @Composable ()
 private fun railShape(side: Side) =
     if (side == Side.RIGHT) RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp) else RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp)
 
-/** The line on a rail's inner edge that drains over the four seconds before it folds away. */
-@Composable
-private fun TimerLine(progress: Float) {
-    Canvas(Modifier.width(2.dp).fillMaxHeight()) {
-        val inset = 16.dp.toPx()
-        val full = size.height - 2 * inset
-        drawLine(
-            Color.White.copy(alpha = 0.28f), Offset(size.width / 2f, size.height - inset),
-            Offset(size.width / 2f, size.height - inset - full * progress.coerceIn(0f, 1f)),
-            strokeWidth = size.width, cap = StrokeCap.Round,
-        )
-    }
-}
-
 @Composable
 private fun ControlsRail(
-    side: Side, timer: Float, client: SillClient, overlay: Overlay, keyboardUp: Boolean,
+    side: Side, client: SillClient, overlay: Overlay, keyboardUp: Boolean,
     onOpen: (Overlay) -> Unit, onKeyboard: () -> Unit, touch: () -> Unit,
 ) {
-    Box {
-        Column(
-            Modifier.width(RailGeometry.RAIL_WIDTH.dp).clip(railShape(side)).background(RailColor)
-                .border(1.dp, SillColors.outline, railShape(side)).padding(vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            RailButton("Apps", Icons.Filled.Apps, null, overlay == Overlay.APPS) { touch(); onOpen(Overlay.APPS) }
-            RailButton("Menu do Mac", Icons.Filled.Menu, null, overlay == Overlay.MENUS, enabled = client.hasMenus) { touch(); onOpen(Overlay.MENUS) }
-            RailButton("Tamanho do texto", null, "Aa", overlay == Overlay.SCALE) { touch(); onOpen(Overlay.SCALE) }
-            Box(Modifier.width(28.dp).height(1.dp).background(SillColors.outline))
-            RailButton("Teclado", Icons.Filled.Keyboard, null, keyboardUp) { touch(); onKeyboard() }
-            RailButton("Ajustes", Icons.Filled.Tune, null, overlay == Overlay.SETTINGS) { touch(); onOpen(Overlay.SETTINGS) }
-        }
-        Box(
-            Modifier.matchParentSize().padding(horizontal = 3.dp),
-            contentAlignment = if (side == Side.RIGHT) Alignment.CenterStart else Alignment.CenterEnd,
-        ) { TimerLine(timer) }
+    Column(
+        Modifier.width(RailGeometry.RAIL_WIDTH.dp).clip(railShape(side)).background(RailColor)
+            .border(1.dp, SillColors.outline, railShape(side)).padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        RailButton("Apps", Icons.Filled.Apps, null, overlay == Overlay.APPS) { touch(); onOpen(Overlay.APPS) }
+        RailButton("Menu do Mac", Icons.Filled.Menu, null, overlay == Overlay.MENUS, enabled = client.hasMenus) { touch(); onOpen(Overlay.MENUS) }
+        RailButton("Tamanho do texto", null, "Aa", overlay == Overlay.SCALE) { touch(); onOpen(Overlay.SCALE) }
+        Box(Modifier.width(28.dp).height(1.dp).background(SillColors.outline))
+        RailButton("Teclado", Icons.Filled.Keyboard, null, keyboardUp) { touch(); onKeyboard() }
+        RailButton("Ajustes", Icons.Filled.Tune, null, overlay == Overlay.SETTINGS) { touch(); onOpen(Overlay.SETTINGS) }
     }
 }
 
@@ -270,47 +243,41 @@ private fun RailButton(label: String, icon: ImageVector?, text: String?, on: Boo
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun WindowsRail(
-    side: Side, timer: Float, client: SillClient, areaH: Float, menuFor: Long?, setMenuFor: (Long?) -> Unit, touch: () -> Unit,
+    side: Side, client: SillClient, areaH: Float, menuFor: Long?, setMenuFor: (Long?) -> Unit, touch: () -> Unit,
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(listState.isScrollInProgress) { if (listState.isScrollInProgress) touch() }
     val haptics = LocalHapticFeedback.current
     val rows = client.windows.size + 1
-    Box {
-        Column(
-            Modifier.width(RailGeometry.RAIL_WIDTH.dp).clip(railShape(side)).background(RailColor)
-                .border(1.dp, SillColors.outline, railShape(side)).padding(top = 8.dp, bottom = 6.dp),
+    Column(
+        Modifier.width(RailGeometry.RAIL_WIDTH.dp).clip(railShape(side)).background(RailColor)
+            .border(1.dp, SillColors.outline, railShape(side)).padding(top = 8.dp, bottom = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        LazyColumn(
+            Modifier.height(RailGeometry.windowListHeight(rows, areaH).dp), state = listState,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            LazyColumn(
-                Modifier.height(RailGeometry.windowListHeight(rows, areaH).dp), state = listState,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                item(key = "desktop") {
-                    RailTile(selected = client.active == StreamSource.Desktop, label = "Desktop", onClick = {
-                        touch(); client.select(StreamSource.Desktop)
-                    }, onLongClick = {}) {
-                        Icon(Icons.Filled.DesktopMac, null, Modifier.size(22.dp), tint = if (client.active == StreamSource.Desktop) SillColors.accent else Color.White)
-                    }
-                }
-                items(client.windows, key = { it.id }) { w ->
-                    val selected = (client.active as? StreamSource.Window)?.id == w.id
-                    Box {
-                        RailTile(selected, "Stream ${w.title}", onClick = { touch(); client.select(StreamSource.Window(w.id)) }, onLongClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress); touch(); setMenuFor(w.id)
-                        }) { WindowThumb(client, w) }
-                        WindowMenu(client, w, menuFor == w.id) { setMenuFor(null) }
-                    }
+            item(key = "desktop") {
+                RailTile(selected = client.active == StreamSource.Desktop, label = "Desktop", onClick = {
+                    touch(); client.select(StreamSource.Desktop)
+                }, onLongClick = {}) {
+                    Icon(Icons.Filled.DesktopMac, null, Modifier.size(22.dp), tint = if (client.active == StreamSource.Desktop) SillColors.accent else Color.White)
                 }
             }
-            Spacer(Modifier.height(4.dp))
-            Text("$rows", fontSize = 11.sp, color = SillColors.secondaryText)
+            items(client.windows, key = { it.id }) { w ->
+                val selected = (client.active as? StreamSource.Window)?.id == w.id
+                Box {
+                    RailTile(selected, "Stream ${w.title}", onClick = { touch(); client.select(StreamSource.Window(w.id)) }, onLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress); touch(); setMenuFor(w.id)
+                    }) { WindowThumb(client, w) }
+                    WindowMenu(client, w, menuFor == w.id) { setMenuFor(null) }
+                }
+            }
         }
-        Box(
-            Modifier.matchParentSize().padding(horizontal = 3.dp),
-            contentAlignment = if (side == Side.RIGHT) Alignment.CenterStart else Alignment.CenterEnd,
-        ) { TimerLine(timer) }
+        Spacer(Modifier.height(4.dp))
+        Text("$rows", fontSize = 11.sp, color = SillColors.secondaryText)
     }
 }
 
