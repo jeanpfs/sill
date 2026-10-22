@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,12 +64,16 @@ fun VideoPanel(client: SillClient, modifier: Modifier, reportSize: Boolean = tru
             if (reportSize && size.width > 0) with(density) { client.setPanel(size.width.toDp().value.toDouble(), size.height.toDp().value.toDouble()) }
         },
     ) {
-        if (rect != null) {
-            val w = with(density) { rect.width().toDp() }
-            val h = with(density) { rect.height().toDp() }
+        if (rect != null && fit != null) {
+            // The surface keeps the 1x fit size and is zoomed by a view transform: resizing a SurfaceView
+            // every pinch step re-creates its surface (and the decoder's output) and shows as a tremor.
+            val w = with(density) { fit.width().toDp() }
+            val h = with(density) { fit.height().toDp() }
+            val k = rect.width() / fit.width()
             AndroidView(
                 factory = { ctx ->
                     SurfaceView(ctx).apply {
+                        pivotX = 0f; pivotY = 0f
                         holder.addCallback(object : SurfaceHolder.Callback {
                             override fun surfaceCreated(holder: SurfaceHolder) = client.decoder.setSurface(holder.surface).let { }
                             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = client.decoder.setSurface(holder.surface).let { }
@@ -79,15 +81,18 @@ fun VideoPanel(client: SillClient, modifier: Modifier, reportSize: Boolean = tru
                         })
                     }
                 },
-                // wrapContentSize(unbounded): a zoomed picture is larger than the panel, and a plain size() would be cut to it.
-                modifier = Modifier.offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }.wrapContentSize(Alignment.TopStart, unbounded = true).size(w, h),
+                update = { v ->
+                    v.scaleX = k; v.scaleY = k
+                    v.translationX = rect.left - fit.left; v.translationY = rect.top - fit.top
+                },
+                modifier = Modifier.offset { IntOffset(fit.left.roundToInt(), fit.top.roundToInt()) }.size(w, h),
             )
         }
         if (touch) {
             AndroidView(
                 factory = { ctx -> DirectTouchView(ctx, client) },
                 update = { v ->
-                    v.videoRect = rect ?: RectF(); v.onTouchedPicture = onTouched
+                    v.videoRect = rect ?: RectF(); v.onTouchedPicture = onTouched; v.zoomed = zoom.zoomed
                     v.onPinch = { k, x, y, dx, dy ->
                         if (fit != null) zoom = zoom.pinch(k, x, y, dx, dy, ZoomFrame(fit.left, fit.top, fit.width(), fit.height()), panel.width.toFloat(), panel.height.toFloat())
                     }

@@ -36,6 +36,9 @@ class DirectTouchView(context: Context, private val client: SillClient) : View(c
      * pixels): the picture's zoom. The picture's frame is then `videoRect`, already zoomed.
      */
     var onPinch: ((factor: Float, x: Float, y: Float, dx: Float, dy: Float) -> Unit)? = null
+
+    /** The picture is zoomed in: two fingers then pan it rather than scroll the Mac. */
+    var zoomed = false
     private var swallowing = false
     private var lastPointer = 0.5 to 0.5
 
@@ -72,6 +75,7 @@ class DirectTouchView(context: Context, private val client: SillClient) : View(c
     init {
         isFocusable = false
     }
+
 
 
     private fun fraction(x: Float, y: Float, clamped: Boolean): Pair<Double, Double>? {
@@ -140,7 +144,8 @@ class DirectTouchView(context: Context, private val client: SillClient) : View(c
                         if (e.pointerCount == 2 && abs(span(e, -1) - lastSpan) > slop) beginZoom(e, cx, cy)
                         return true
                     }
-                    if (e.pointerCount == 2 && abs(span(e, -1) - lastSpan) > hypot(cx - lastCx, cy - lastCy)) { beginZoom(e, cx, cy); return true }
+                    // Zoomed in, two fingers moving the picture are the pan; one finger still scrolls the Mac.
+                    if (e.pointerCount == 2 && (zoomed || abs(span(e, -1) - lastSpan) > hypot(cx - lastCx, cy - lastCy))) { beginZoom(e, cx, cy); return true }
                     handler.removeCallbacks(longPress)
                     state = State.SCROLLING
                     scrollAt = fraction(cx, cy, clamped = true) ?: (0.5 to 0.5)
