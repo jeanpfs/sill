@@ -20,6 +20,7 @@ class MenuState {
 
     var version: Int? = null; private set
     var app: String? = null; private set
+    var bundleID: String? = null; private set
     var top: List<MacMenuItem> = emptyList(); private set
     var topNote: String? = null; private set
     var topStale = false; private set
@@ -72,6 +73,7 @@ class MenuState {
             }
             version = m.version
             app = m.app
+            bundleID = m.bundleID
             top = m.menus
             topStale = m.stale
             topNote = m.note
@@ -107,7 +109,7 @@ class MenuState {
     }
 
     fun reset() {
-        version = null; app = null; top = emptyList(); topNote = null; topStale = false
+        version = null; app = null; bundleID = null; top = emptyList(); topNote = null; topStale = false
         menus.clear(); waiting.clear(); choices.clear()
     }
 }
