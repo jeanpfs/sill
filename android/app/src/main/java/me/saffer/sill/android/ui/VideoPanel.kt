@@ -65,7 +65,12 @@ fun VideoPanel(
     val fit = fitRect(panel, client.videoSize)
     // The picture as shown: the aspect fit, enlarged by the pinch. Touch, pointer sprite and decoder
     // surface all follow this one rect, so a tap lands under the finger at any zoom.
-    val anchorY = client.pointerAnchor().y
+    // Where the picture is lifted to is decided when the keyboard opens and held until it closes. Followed live it
+    // fed back into itself: a scroll moves the Mac's pointer to the finger, the lift follows the pointer, the
+    // picture moves under the finger, and the next scroll step is computed from the moved picture.
+    val anchorMemory = remember { floatArrayOf(0.5f) }
+    if (covered == 0) anchorMemory[0] = client.pointerAnchor().y
+    val anchorY = anchorMemory[0]
     // No animation of its own: `covered` follows the keyboard's slide frame by frame, so the picture rises with
     // it. A tween on top of that only made it trail the keyboard.
     val lift = fit?.let { f ->
