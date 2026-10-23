@@ -489,6 +489,7 @@ private fun SettingsPane(client: SillClient, onDisconnect: () -> Unit) {
                 add { Toggle("Three-Finger Gestures", client.gesturesEnabled) { client.setGestures(it) } }
                 add { Toggle("Show Stream Stats", client.showHud) { client.setHud(it) } }
                 add { Toggle("Open Keyboard Automatically", client.autoKeyboard, enabled = client.hostTextFocus >= 1) { client.useAutoKeyboard(it) } }
+                add { Toggle("Sharper Enlargement (experimental)", client.sharpUpscale) { client.useSharpUpscale(it) } }
             }
             toggles.chunked(2).forEach { pair ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {

@@ -157,6 +157,10 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         is StreamSource.Window -> me.saffer.sill.android.ui.input.ZoomMemory.window(windows.firstOrNull { it.id == a.id }?.bundleID.orEmpty(), a.id)
     }
 
+    /** The picture through a bicubic resampler instead of the compositor's bilinear one (`SharpVideoView`); opt-in, a GL pass more. */
+    var sharpUpscale by mutableStateOf(prefs.getBoolean("sharpUpscale", false)); private set
+    fun useSharpUpscale(on: Boolean) { sharpUpscale = on; prefs.edit().putBoolean("sharpUpscale", on).apply() }
+
     /** Open the soft keyboard by itself when a text field takes focus on the Mac. */
     var autoKeyboard by mutableStateOf(prefs.getBoolean("autoKeyboard", true)); private set
     fun useAutoKeyboard(on: Boolean) {

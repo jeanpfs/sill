@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import me.saffer.sill.android.client.SillClient
+import me.saffer.sill.android.video.SharpVideoView
 import me.saffer.sill.android.ui.input.DirectTouchView
 import me.saffer.sill.android.ui.input.StreamZoom
 import me.saffer.sill.android.ui.input.ZoomFrame
@@ -93,9 +94,11 @@ fun VideoPanel(
             val w = with(density) { fit.width().toDp() }
             val h = with(density) { fit.height().toDp() }
             val k = rect.width() / fit.width()
+            androidx.compose.runtime.key(client.sharpUpscale) {
             AndroidView(
                 factory = { ctx ->
-                    SurfaceView(ctx).apply {
+                    if (client.sharpUpscale) SharpVideoView(ctx, client).apply { pivotX = 0f; pivotY = 0f }
+                    else SurfaceView(ctx).apply {
                         pivotX = 0f; pivotY = 0f
                         holder.addCallback(object : SurfaceHolder.Callback {
                             override fun surfaceCreated(holder: SurfaceHolder) = client.decoder.setSurface(holder.surface).let { }
@@ -110,6 +113,7 @@ fun VideoPanel(
                 },
                 modifier = Modifier.offset { IntOffset(fit.left.roundToInt(), fit.top.roundToInt()) }.size(w, h),
             )
+            }
         }
         if (touch) {
             AndroidView(

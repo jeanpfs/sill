@@ -216,6 +216,8 @@ fun SettingsPanel(client: SillClient, modifier: Modifier, onDone: () -> Unit, on
             else Note("Swipe up: Mission Control. Down: App Exposé. Left and right: Spaces. Pinch: Apps. Spread: Desktop.")
             Toggle("Show Stream Stats", client.showHud) { client.setHud(it) }
             Toggle("Open Keyboard Automatically", client.autoKeyboard, enabled = client.hostTextFocus >= 1) { client.useAutoKeyboard(it) }
+            Toggle("Sharper Enlargement (experimental)", client.sharpUpscale) { client.useSharpUpscale(it) }
+            Note("Draws the picture through a bicubic filter where the screen enlarges it (Text Size 1×). Text edges are tighter; it adds about a frame of delay.")
             Note(
                 if (client.hostTextFocus >= 1) "The keyboard opens when a text field takes focus on ${client.macName}, and closes when it loses it."
                 else "Needs Sill on ${client.macName} with text-focus support (this fork’s Mac app).",
