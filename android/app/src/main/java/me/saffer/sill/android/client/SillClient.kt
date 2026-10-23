@@ -92,6 +92,8 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     var hostTextFocus by mutableIntStateOf(0); private set
     /** A text field has focus on the Mac (kind 33), while this device is subscribed. */
     var macTextFocused by mutableStateOf(false); private set
+    /** How many times the Mac's front window switched what it shows (a terminal tab): a tap after which it moved was no click into text (`TextFocus.switches`). */
+    @Volatile var macTextSwitches = 0; private set
     var macTextSecure by mutableStateOf(false); private set
     var hostVersion by mutableStateOf<String?>(null); private set
     var stats by mutableStateOf<LinkStats?>(null); private set
@@ -124,6 +126,16 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     var gesturesEnabled by mutableStateOf(prefs.getBoolean("trackpadGestures", true)); private set
     var showHud by mutableStateOf(prefs.getBoolean("hud", false)); private set
     fun setGestures(on: Boolean) { gesturesEnabled = on; prefs.edit().putBoolean("trackpadGestures", on).apply() }
+
+    /**
+     * The app a session opens on, by bundle id, when it has a window open on the Mac; else the Desktop
+     * (`StartPick`). Set from a window's long-press menu. This device's own, never sent.
+     */
+    var favoriteApp by mutableStateOf(prefs.getString("favoriteApp", null)); private set
+    fun useFavoriteApp(bundleID: String?) {
+        favoriteApp = bundleID
+        prefs.edit().apply { if (bundleID == null) remove("favoriteApp") else putString("favoriteApp", bundleID) }.apply()
+    }
 
     /** Open the soft keyboard by itself when a text field takes focus on the Mac. */
     var autoKeyboard by mutableStateOf(prefs.getBoolean("autoKeyboard", true)); private set
@@ -431,7 +443,7 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         windows = emptyList(); active = StreamSource.None; previousActive = StreamSource.None
         thumbnails.clear(); apps = emptyList(); videoSize = null; cursor = null; stats = null
         hasSettings = false; hostState = null; shownSettings = null; ledger.reset(); settingsRevision++; resolutionAsked = false
-        macTextFocused = false; macTextSecure = false; hostTextFocus = 0
+        macTextFocused = false; macTextSwitches = 0; macTextSecure = false; hostTextFocus = 0
         menuState.reset(); menuRevision++; hasMenus = false
         macPointer = null; pointerHere = true
         lastViewportJson = null
@@ -532,6 +544,7 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
                 val o = org.json.JSONObject(String(msg.payload, Charsets.UTF_8))
                 macTextFocused = o.optBoolean("focused", false)
                 macTextSecure = macTextFocused && o.optBoolean("secure", false)
+                macTextSwitches = o.optInt("switches", 0)
             }
             Kind.APP_LIST -> apps = parseAppList(msg.payload)
             Kind.HOST_SETTINGS -> HostSettingsState.parse(msg.payload)?.let { settingsState(it) }
@@ -576,9 +589,15 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
             sendViewport(immediately = true)
             syncTextFocusSubscription()
         }
+        // A session begins on the favorite app when it is open, in place of the Desktop.
+        val start = if (first) StartPick.choose(favoriteApp, list.windows, list.active) else null
+        if (start != null) {
+            lastAutoDesktopAt = SystemClock.uptimeMillis()
+            select(start, user = false)
+        }
         // Nothing streams: ask for the Desktop (at most every 10 s), unless the watched window just
         // closed, when the device waits 2 s for the person's own pick first.
-        if (list.active == StreamSource.None) {
+        else if (list.active == StreamSource.None) {
             val now = SystemClock.uptimeMillis()
             val watchedGone = was is StreamSource.Window && list.windows.none { it.id == was.id }
             if (now - lastAutoDesktopAt > 10_000) {

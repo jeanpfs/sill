@@ -21,6 +21,7 @@ final class TextFocusWatcher {
     /// coordinator, which knows the streamed source. A host that has not set it treats it as the Desktop.
     var scope: @MainActor () -> TextFocusScope = { .desktop }
     private var tracker = TextFocusTracker<ObjectIdentifier>()
+    private var switchCounter = TitleSwitchCounter()
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private var look: Task<Void, Never>?
 
@@ -76,7 +77,10 @@ final class TextFocusWatcher {
     private func readState() async -> TextFocus? {
         guard let focus else { return .unfocused }
         guard let reading = await focus.read() else { return nil }
-        return TextFocus.scoped(reading.focus, frontmost: reading.pid, scope: scope())
+        var state = TextFocus.scoped(reading.focus, frontmost: reading.pid, scope: scope())
+        let switches = switchCounter.observe(title: reading.title)
+        if switches > 0 { state.switches = switches }
+        return state
     }
 
     private func observed(_ state: TextFocus?) {
@@ -106,6 +110,8 @@ final class AccessibilityFocus: @unchecked Sendable {
     struct Reading: Sendable {
         var focus: TextFocus
         var pid: Int32
+        /// The title of the app's front window, when it could be read.
+        var title: String? = nil
     }
 
     /// The Mac's focus now, or nil when it could not be read. On `queue`, one read at a time.
@@ -141,21 +147,27 @@ final class AccessibilityFocus: @unchecked Sendable {
             AXUIElementSetAttributeValue(application, "AXManualAccessibility" as CFString, kCFBooleanTrue)
             enabled.insert(pid)
         }
+        let title = frontTitle(of: application)
         let focused = attribute(system, "AXFocusedUIElement")
         switch focused.error {
         case .success:
-            guard let value = focused.value else { return Reading(focus: .unfocused, pid: pid) }
+            guard let value = focused.value else { return Reading(focus: .unfocused, pid: pid, title: title) }
             let element = value as! AXUIElement
             AXUIElementSetMessagingTimeout(element, Self.timeout)
             return Reading(focus: TextFocus.classify(role: attribute(element, "AXRole").value as? String,
                                                      subrole: attribute(element, "AXSubrole").value as? String,
-                                                     editable: attribute(element, "AXEditable").value as? Bool), pid: pid)
+                                                     editable: attribute(element, "AXEditable").value as? Bool), pid: pid, title: title)
         case .noValue:
-            return Reading(focus: .unfocused, pid: pid)
+            return Reading(focus: .unfocused, pid: pid, title: title)
         default:
             note("the focused element: AX error \(focused.error.rawValue)")
             return nil
         }
+    }
+
+    private func frontTitle(of application: AXUIElement) -> String? {
+        guard let window = attribute(application, "AXFocusedWindow").value, CFGetTypeID(window) == AXUIElementGetTypeID() else { return nil }
+        return attribute(window as! AXUIElement, "AXTitle").value as? String
     }
 
     /// One line in the log the first time a kind of read fails, so a host that cannot see the Mac's focus

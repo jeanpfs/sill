@@ -32,6 +32,7 @@ class DirectTouchView(context: Context, private val client: SillClient) : View(c
     var onTouchedPicture: (() -> Boolean)? = null
 
     /** A finger tap went to the Mac as a click: the stream screen may then bring the keyboard up if a text field has focus. */
+    var onTapped: (() -> Unit)? = null
 
     /**
      * Two fingers spread or closed (factor, around x/y, the midpoint's move dx/dy, all in this view's
@@ -198,6 +199,7 @@ class DirectTouchView(context: Context, private val client: SillClient) : View(c
         client.pointer(PointerAction.MOVE, p.first, p.second)
         client.pointer(PointerAction.LEFT_DOWN, p.first, p.second)
         client.pointer(PointerAction.LEFT_UP, p.first, p.second)
+        onTapped?.invoke()
     }
 
     /** The centroid of the fingers still down, leaving out `skip` (a finger lifting). */

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -47,6 +48,8 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
@@ -76,6 +79,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -116,6 +120,7 @@ fun StreamScreen(client: SillClient) {
     var sink by remember { mutableStateOf<KeyboardSink?>(null) }
     var keyboardWanted by remember { mutableStateOf(false) }
     val imeVisible = WindowInsets.isImeVisible
+    val imeHeight = WindowInsets.ime.getBottom(LocalDensity.current)
     LaunchedEffect(imeVisible) { if (!imeVisible) keyboardWanted = false }
     // A panel's search field takes focus; once it closes, hardware keys go to the Mac again.
     LaunchedEffect(overlay, sink) { if (overlay == Overlay.NONE) sink?.requestFocus() }
@@ -138,8 +143,22 @@ fun StreamScreen(client: SillClient) {
         }
     }
     // A terminal (Terminal, Warp, iTerm) keeps a text area focused the whole time it is in front, so its focus
-    // never changes and a tap on the picture (a click on a Warp tab as much as on the prompt) says nothing about
-    // typing: the keyboard comes up for a terminal only by its button.
+    // never changes to say "the person clicked the prompt". A click is that: a tap on the picture, with a text
+    // field focused and the keyboard away, brings it back. The wait lets the Mac's answer to this very click
+    // arrive first (a click on a button moves the focus away from the text). Warp reports one text area for its
+    // whole window, tabs included, so a click on a tab is told apart by the window having switched what it
+    // shows by then (`TextFocus.switches`): that tap was not into the text.
+    var tapped by remember { mutableIntStateOf(0) }
+    var switchesAtTap by remember { mutableIntStateOf(0) }
+    LaunchedEffect(tapped) {
+        if (tapped == 0) return@LaunchedEffect
+        val before = switchesAtTap
+        delay(650)
+        val s = sink ?: return@LaunchedEffect
+        if (client.autoKeyboard && client.macTextFocused && client.macTextSwitches == before && !imeNow && !keyboardWanted) {
+            overlay = Overlay.NONE; keyboardWanted = true; autoOpened = true; s.show()
+        }
+    }
 
     fun toggleKeyboard() {
         val s = sink ?: return
@@ -194,25 +213,29 @@ fun StreamScreen(client: SillClient) {
         when {
             // Sideways (a Fold open, a tablet, a phone on its side): no bar. The picture has the whole screen and
             // the controls are two rails on the side edges, under the thumbs.
-            !portrait -> Box(Modifier.fillMaxSize().then(if (imeVisible) Modifier.imePadding() else Modifier)) {
-                VideoPanel(client, Modifier.fillMaxSize(), reportSize = !imeVisible, onTouched = closeSideways)
-                SideRails(
-                    client = client, rails = rails, overlay = overlay, keyboardUp = keyboardWanted || imeVisible,
-                    onOpen = { open(it) }, onKeyboard = { toggleKeyboard() },
-                    panel = { panelContent(Modifier) },
-                )
+            // The keyboard covers the picture's bottom instead of shrinking it: the Mac's text keeps its size, the
+            // picture moves up to keep the point being typed at in view (ImeLift), and the rails stay above the keys.
+            !portrait -> Box(Modifier.fillMaxSize()) {
+                VideoPanel(client, Modifier.fillMaxSize(), onTouched = closeSideways, onTapped = { switchesAtTap = client.macTextSwitches; tapped++ }, covered = imeHeight)
+                Box(Modifier.fillMaxSize().imePadding()) {
+                    SideRails(
+                        client = client, rails = rails, overlay = overlay, keyboardUp = keyboardWanted || imeVisible,
+                        onOpen = { open(it) }, onKeyboard = { toggleKeyboard() },
+                        panel = { panelContent(Modifier) },
+                    )
+                }
             }
             // Upright on a tablet or an open Fold: the picture on top and one deck under it, where the thumbs are.
             wide -> Box(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
                 PortraitDeckScreen(
                     client = client, latch = latch, overlay = overlay, keyboardUp = keyboardWanted || imeVisible,
                     onOpen = { open(it) }, onCloseOverlay = { overlay = Overlay.NONE }, onKeyboard = { toggleKeyboard() },
-                    onTouched = closePanel, panel = { panelContent(it) },
+                    onTapped = { switchesAtTap = client.macTextSwitches; tapped++ }, onTouched = closePanel, panel = { panelContent(it) },
                 )
             }
             else -> Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout).navigationBarsPadding()) {
                 // The picture in a fixed 16:10 pane: nothing below it moves when windows change.
-                VideoPanel(client, Modifier.fillMaxWidth().padding(8.dp).aspectRatio(1.6f), onTouched = closePanel)
+                VideoPanel(client, Modifier.fillMaxWidth().padding(8.dp).aspectRatio(1.6f), onTouched = closePanel, onTapped = { switchesAtTap = client.macTextSwitches; tapped++ })
                 PhoneButtons(bar)
                 Strip(client, Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 6.dp))
                 KeyRow(client, latch, full = false, onKeyboard = { toggleKeyboard() }, keyboardUp = keyboardWanted || imeVisible)
@@ -365,6 +388,12 @@ fun WindowMenu(client: SillClient, w: WindowInfo, expanded: Boolean, onDismiss: 
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         Text(w.title.ifEmpty { w.appName }, fontSize = 13.sp, color = SillColors.secondaryText, maxLines = 1,
             overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp).width(220.dp))
+        val favorite = w.bundleID.isNotEmpty() && client.favoriteApp == w.bundleID
+        if (w.bundleID.isNotEmpty()) DropdownMenuItem(
+            leadingIcon = { Icon(if (favorite) Icons.Filled.Star else Icons.Outlined.StarBorder, null, Modifier.size(18.dp), tint = SillColors.accent) },
+            text = { Text(if (favorite) "Don't open ${w.appName} first" else "Open ${w.appName} first") },
+            onClick = { onDismiss(); client.useFavoriteApp(if (favorite) null else w.bundleID) },
+        )
         DropdownMenuItem(leadingIcon = { Dot(SillColors.close) }, text = { Text("Close Window") }, onClick = { onDismiss(); client.windowCommand(w.id, "close") })
         DropdownMenuItem(leadingIcon = { Dot(SillColors.minimize) }, text = { Text("Minimize") }, onClick = { onDismiss(); client.windowCommand(w.id, "minimize") })
         DropdownMenuItem(leadingIcon = { Dot(SillColors.zoom) }, text = { Text("Full Screen") }, onClick = { onDismiss(); client.windowCommand(w.id, "fullScreen") })

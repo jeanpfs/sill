@@ -3,6 +3,8 @@ package me.saffer.sill.android.ui
 import android.graphics.RectF
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,7 +56,9 @@ fun fitRect(panel: IntSize, video: Pair<Int, Int>?): RectF? {
 @Composable
 fun VideoPanel(
     client: SillClient, modifier: Modifier, reportSize: Boolean = true, touch: Boolean = true,
-    onTouched: () -> Boolean = { false },
+    onTouched: () -> Boolean = { false }, onTapped: () -> Unit = {},
+    /** Px at the bottom of the panel that the soft keyboard covers: the picture moves up to keep the typed-at point in view (`ImeLift`). */
+    covered: Int = 0,
 ) {
     val density = LocalDensity.current
     var panel by remember { mutableStateOf(IntSize.Zero) }
@@ -62,9 +66,17 @@ fun VideoPanel(
     val fit = fitRect(panel, client.videoSize)
     // The picture as shown: the aspect fit, enlarged by the pinch. Touch, pointer sprite and decoder
     // surface all follow this one rect, so a tap lands under the finger at any zoom.
+    val anchorY = client.pointerAnchor().y
+    val lift by animateFloatAsState(
+        fit?.let { f ->
+            val z = zoom.frame(ZoomFrame(f.left, f.top, f.width(), f.height()), panel.width.toFloat(), panel.height.toFloat())
+            ImeLift.shift(z.top + anchorY * z.height, panel.height.toFloat(), covered.toFloat())
+        } ?: 0f,
+        animationSpec = tween(160), label = "imeLift",
+    )
     val rect = fit?.let { f ->
         val z = zoom.frame(ZoomFrame(f.left, f.top, f.width(), f.height()), panel.width.toFloat(), panel.height.toFloat())
-        RectF(z.left, z.top, z.left + z.width, z.top + z.height)
+        RectF(z.left, z.top - lift, z.left + z.width, z.top - lift + z.height)
     }
     Box(
         modifier.clipToBounds().onSizeChanged { size ->
@@ -100,7 +112,7 @@ fun VideoPanel(
             AndroidView(
                 factory = { ctx -> DirectTouchView(ctx, client) },
                 update = { v ->
-                    v.videoRect = rect ?: RectF(); v.onTouchedPicture = onTouched; v.zoomed = zoom.zoomed
+                    v.videoRect = rect ?: RectF(); v.onTouchedPicture = onTouched; v.onTapped = onTapped; v.zoomed = zoom.zoomed
                     v.onPinch = { k, x, y, dx, dy ->
                         if (fit != null) zoom = zoom.pinch(k, x, y, dx, dy, ZoomFrame(fit.left, fit.top, fit.width(), fit.height()), panel.width.toFloat(), panel.height.toFloat())
                     }

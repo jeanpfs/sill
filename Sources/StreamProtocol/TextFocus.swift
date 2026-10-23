@@ -18,10 +18,16 @@ public struct TextFocus: Codable, Hashable, Sendable {
     public var focused: Bool
     /// True for a password field. Omitted from the JSON otherwise.
     public var secure: Bool?
+    /// How many times the window in front changed what it shows (a terminal's tab switched) since the host began
+    /// reading; omitted while 0. A terminal keeps one text area focused whatever is clicked (Warp reports a
+    /// single one for the whole window, tabs included), so the device cannot tell a click on a tab from a click
+    /// on the prompt by the focus: a click after which this moved was a tab, one after which it did not was text.
+    public var switches: Int?
 
-    public init(focused: Bool, secure: Bool? = nil) {
+    public init(focused: Bool, secure: Bool? = nil, switches: Int? = nil) {
         self.focused = focused
         self.secure = secure
+        self.switches = switches
     }
 
     /// No text field has focus.
@@ -50,6 +56,33 @@ public struct TextFocus: Codable, Hashable, Sendable {
 
     /// A device's switch-off: `{"stop":true}`.
     public static var stopping: Data { Data(#"{"stop":true}"#.utf8) }
+}
+
+/// Counts the times the front window's title changed to another one, for `TextFocus.switches`. A terminal's
+/// title carries a spinner and a status symbol that change as it works (`π ⠼ 🤖 SILL: Analisar…`, then
+/// `π > ⭐ SILL: Analisar…`), so only its letters and digits are compared: the same tab keeps them, another
+/// tab has other ones. Pure, so the check can drive it.
+public struct TitleSwitchCounter: Sendable {
+    public private(set) var count = 0
+    private var key: String?
+
+    public init() {}
+
+    /// The letters and digits of `title`: what stays when a spinner or a status symbol changes.
+    public static func key(of title: String) -> String {
+        String(title.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) && !(0x2800...0x28FF).contains($0.value) })
+    }
+
+    /// A read of the front window's title (nil: it could not be read, which changes nothing). The first
+    /// reading is the starting point, not a switch. Returns the count.
+    @discardableResult
+    public mutating func observe(title: String?) -> Int {
+        guard let title else { return count }
+        let now = Self.key(of: title)
+        if let key, key != now { count += 1 }
+        key = now
+        return count
+    }
 }
 
 /// What a device is shown, which decides whose text focus it may hear.
