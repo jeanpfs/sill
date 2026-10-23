@@ -29,6 +29,7 @@ class KeyboardSink(context: Context, private val client: SillClient) : View(cont
     var onKeyboardShown: ((Boolean) -> Unit)? = null
 
     private var composing = ""
+    private val backspaces = BackspaceRepeat()
     private val heldUsages = HashMap<Int, Int>()   // keyCode → usage, for keys sent as keys
 
     init {
@@ -72,7 +73,7 @@ class KeyboardSink(context: Context, private val client: SillClient) : View(cont
             override fun finishComposingText(): Boolean { composing = ""; return true }
 
             override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
-                repeat(beforeLength.coerceAtMost(64)) { type("\u0008") }
+                if (beforeLength == 1) backspace() else repeat(beforeLength.coerceAtMost(64)) { type("\u0008") }
                 return true
             }
 
@@ -93,6 +94,20 @@ class KeyboardSink(context: Context, private val client: SillClient) : View(cont
         repeat(composing.length - p) { client.text("\u0008") }
         if (p < new.length) client.text(new.substring(p))
         composing = new
+    }
+
+    /**
+     * One backspace: a character, or a word while the keyboard's held key is in its slow phase (`BackspaceRepeat`),
+     * which is what the keyboard means by those events. A word is ⌥⌫, as on the Mac.
+     */
+    private fun backspace() {
+        when (backspaces.onBackspace(android.os.SystemClock.uptimeMillis())) {
+            BackspaceRepeat.Delete.CHAR -> type("\u0008")
+            BackspaceRepeat.Delete.WORD -> {
+                client.press(Keys.BACKSPACE, KeyMods.OPTION)
+                if (latched() != 0L) spendLatch()
+            }
+        }
     }
 
     private fun type(t: String) {
@@ -158,7 +173,7 @@ class KeyboardSink(context: Context, private val client: SillClient) : View(cont
         when (e.keyCode) {
             KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> { type("\n"); return true }
             KeyEvent.KEYCODE_TAB -> { type("\t"); return true }
-            KeyEvent.KEYCODE_DEL -> { type("\u0008"); return true }
+            KeyEvent.KEYCODE_DEL -> { backspace(); return true }
         }
         val ch = e.getUnicodeChar(e.metaState)
         if (ch != 0 && ch and KeyCharacterMapCombining == 0) {
