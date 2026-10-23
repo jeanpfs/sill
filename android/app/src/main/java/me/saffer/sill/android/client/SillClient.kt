@@ -189,7 +189,8 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     private var previousActive: StreamSource = StreamSource.None
     private var panel: Pair<Double, Double>? = null
     private var panelPx: Pair<Int, Int>? = null
-    var textScale by mutableStateOf<Double?>(null); private set
+    /** The Aa choice (Viewport.scale), kept between sessions: a window the Mac opens on is sized to it at once, as it was left. */
+    var textScale by mutableStateOf<Double?>(prefs.getFloat("textScale", 0f).takeIf { it > 0f }?.toDouble()); private set
     private var lastViewportJson: String? = null
     private var viewportPending: Runnable? = null
     private var unsupportedSize: Pair<Int, Int>? = null
@@ -752,6 +753,7 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
 
     fun chooseTextScale(scale: Double?) {
         textScale = scale
+        prefs.edit().putFloat("textScale", scale?.toFloat() ?: 0f).apply()
         sendViewport(immediately = false)
     }
 
