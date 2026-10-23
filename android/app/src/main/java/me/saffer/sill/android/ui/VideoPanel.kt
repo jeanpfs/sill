@@ -3,8 +3,6 @@ package me.saffer.sill.android.ui
 import android.graphics.RectF
 import android.view.SurfaceHolder
 import android.view.SurfaceView
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -68,13 +66,12 @@ fun VideoPanel(
     // The picture as shown: the aspect fit, enlarged by the pinch. Touch, pointer sprite and decoder
     // surface all follow this one rect, so a tap lands under the finger at any zoom.
     val anchorY = client.pointerAnchor().y
-    val lift by animateFloatAsState(
-        fit?.let { f ->
-            val z = zoom.frame(ZoomFrame(f.left, f.top, f.width(), f.height()), panel.width.toFloat(), panel.height.toFloat())
-            ImeLift.shift(z.top + anchorY * z.height, panel.height.toFloat(), covered.toFloat())
-        } ?: 0f,
-        animationSpec = tween(160), label = "imeLift",
-    )
+    // No animation of its own: `covered` follows the keyboard's slide frame by frame, so the picture rises with
+    // it. A tween on top of that only made it trail the keyboard.
+    val lift = fit?.let { f ->
+        val z = zoom.frame(ZoomFrame(f.left, f.top, f.width(), f.height()), panel.width.toFloat(), panel.height.toFloat())
+        ImeLift.shift(z.top + anchorY * z.height, panel.height.toFloat(), covered.toFloat())
+    } ?: 0f
     val rect = fit?.let { f ->
         val z = zoom.frame(ZoomFrame(f.left, f.top, f.width(), f.height()), panel.width.toFloat(), panel.height.toFloat())
         RectF(z.left, z.top - lift, z.left + z.width, z.top - lift + z.height)
