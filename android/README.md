@@ -79,6 +79,16 @@ Enlargement is for people who want 1×: a GL view with a Catmull-Rom filter in p
 one. It is off by default because it costs about 1.5 points of CPU, ~115 MB of memory and a frame of display
 delay (not measured), and it changes nothing at ¾× (identity at 1:1, measured).
 
+## Typing
+
+Typed text, accents and ç from the keyboard's long-press popup reach the Mac as Unicode text (checked with
+Samsung Keyboard, PT·EN). A held backspace follows the keyboard's own repeat: Samsung Keyboard ramps from 400 ms
+to 40 ms between deletes for about a second, then drops to a steady 222 ms and expects the field to delete a
+word each time. The Mac's field is not in the keyboard's editor, so those slow events used to delete one
+character and the deletion seemed to slow down (10, then 5 characters a second); a run of 8 gaps of 70 ms or
+less marks the keyboard's repeat (a hand cannot tap that fast), and the slow events after it send ⌥⌫ (a word),
+which holds about 38 characters a second (`BackspaceRepeat`). Taps, at any speed, delete one character each.
+
 ## Switching to another Android app
 
 While a session is open, Sill runs a foreground service (the ongoing "Sill is connected to your Mac"
