@@ -74,11 +74,17 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 adb shell cmd package compile -m speed -f me.saffer.sill.android
 ```
 
-Measured on a Z Fold8 opening and closing the side rails 8 times over a stream: 6.8% of the frames
-janky and 24 ms at the 99th percentile right after install, 1.6% and 9 ms after the compile above.
-Streaming costs about 10% of one core either way (60% of it is the system's MediaCodec); the app's own
-reader and decoder threads take about 1% each.
+Measured on a Z Fold8 opening and closing the side rails 8 times over a stream, three runs each:
 
+| | frames janky | 99th percentile | frames over the UI thread's budget |
+|---|---|---|---|
+| installed, not compiled (`verify`) | 5.0–8.5% | 20–27 ms | 11–19 |
+| after the compile above (`speed`) | 3.3–5.0% | 10–16 ms | 0–4 |
+
+(The panel is 120 Hz, so a frame past 8.3 ms counts as janky.) Streaming costs about 10% of one core
+either way, and 60% of that is the system's MediaCodec; the app's own reader and decoder threads take
+about 1% each. The frame rate (47–50 fps on a repainting window) and the text's sharpness do not change
+with any of this.
 
 ## How it maps to the iOS app
 
