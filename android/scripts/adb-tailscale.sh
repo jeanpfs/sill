@@ -53,10 +53,11 @@ case "$cmd" in
         ;;
     connect)
         adb disconnect >/dev/null 2>&1 || true
+        sleep 1   # adb refuses a connect that follows its disconnect at once
         ports=${2:-$(open_ports "$ip")}
         [ -n "$ports" ] || { echo "nothing open on $ip in 30000-50000: switch Wireless debugging on in the phone's Developer options" >&2; exit 1; }
         for p in $ports; do
-            out=$(timeout 15 adb connect "$ip:$p" 2>&1 || true)
+            out=$(adb connect "$ip:$p" 2>&1 || true)   # a port that is not the connect one can take its time to refuse
             case "$out" in
                 connected*|already*) echo "$out"; adb devices -l | tail -n +2; exit 0 ;;
             esac

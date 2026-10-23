@@ -531,7 +531,6 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
             Kind.TEXT_FOCUS -> runCatching {
                 val o = org.json.JSONObject(String(msg.payload, Charsets.UTF_8))
                 macTextFocused = o.optBoolean("focused", false)
-                android.util.Log.i("FocusDbg", "focus=$macTextFocused at ${android.os.SystemClock.uptimeMillis()}")
                 macTextSecure = macTextFocused && o.optBoolean("secure", false)
             }
             Kind.APP_LIST -> apps = parseAppList(msg.payload)

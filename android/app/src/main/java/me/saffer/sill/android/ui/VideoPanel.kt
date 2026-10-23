@@ -54,7 +54,7 @@ fun fitRect(panel: IntSize, video: Pair<Int, Int>?): RectF? {
 @Composable
 fun VideoPanel(
     client: SillClient, modifier: Modifier, reportSize: Boolean = true, touch: Boolean = true,
-    onTouched: () -> Boolean = { false }, onTapped: () -> Unit = {},
+    onTouched: () -> Boolean = { false },
 ) {
     val density = LocalDensity.current
     var panel by remember { mutableStateOf(IntSize.Zero) }
@@ -100,7 +100,7 @@ fun VideoPanel(
             AndroidView(
                 factory = { ctx -> DirectTouchView(ctx, client) },
                 update = { v ->
-                    v.videoRect = rect ?: RectF(); v.onTouchedPicture = onTouched; v.onTapped = onTapped; v.zoomed = zoom.zoomed
+                    v.videoRect = rect ?: RectF(); v.onTouchedPicture = onTouched; v.zoomed = zoom.zoomed
                     v.onPinch = { k, x, y, dx, dy ->
                         if (fit != null) zoom = zoom.pinch(k, x, y, dx, dy, ZoomFrame(fit.left, fit.top, fit.width(), fit.height()), panel.width.toFloat(), panel.height.toFloat())
                     }

@@ -104,7 +104,6 @@ fun PortraitDeckScreen(
     onOpen: (Overlay) -> Unit,
     onCloseOverlay: () -> Unit,
     onKeyboard: () -> Unit,
-    onTapped: () -> Unit,
     onTouched: () -> Boolean,
     panel: @Composable (Modifier) -> Unit,
 ) {
@@ -128,7 +127,7 @@ fun PortraitDeckScreen(
         // every frame tears. It is centred in what the deck leaves, 16:10.
         val (vw, vh) = DeckGeometry.video(areaW, areaH - target)
         Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height((areaH - target).dp), contentAlignment = Alignment.Center) {
-            VideoPanel(client, Modifier.size(vw.dp, vh.dp), onTouched = onTouched, onTapped = onTapped)
+            VideoPanel(client, Modifier.size(vw.dp, vh.dp), onTouched = onTouched)
         }
 
         Column(

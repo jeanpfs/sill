@@ -138,18 +138,8 @@ fun StreamScreen(client: SillClient) {
         }
     }
     // A terminal (Terminal, Warp, iTerm) keeps a text area focused the whole time it is in front, so its focus
-    // never changes to say "the person clicked the prompt". A click is that: a tap on the picture, with a text
-    // field focused and the keyboard away, brings it back. The wait lets the Mac's answer to this very click
-    // arrive first (a click on a button moves the focus away from the text).
-    var tapped by remember { mutableIntStateOf(0) }
-    LaunchedEffect(tapped) {
-        if (tapped == 0) return@LaunchedEffect
-        delay(450)
-        val s = sink ?: return@LaunchedEffect
-        if (client.autoKeyboard && client.macTextFocused && !imeNow && !keyboardWanted) {
-            overlay = Overlay.NONE; keyboardWanted = true; autoOpened = true; s.show()
-        }
-    }
+    // never changes and a tap on the picture (a click on a Warp tab as much as on the prompt) says nothing about
+    // typing: the keyboard comes up for a terminal only by its button.
 
     fun toggleKeyboard() {
         val s = sink ?: return
@@ -205,7 +195,7 @@ fun StreamScreen(client: SillClient) {
             // Sideways (a Fold open, a tablet, a phone on its side): no bar. The picture has the whole screen and
             // the controls are two rails on the side edges, under the thumbs.
             !portrait -> Box(Modifier.fillMaxSize().then(if (imeVisible) Modifier.imePadding() else Modifier)) {
-                VideoPanel(client, Modifier.fillMaxSize(), reportSize = !imeVisible, onTouched = closeSideways, onTapped = { tapped++ })
+                VideoPanel(client, Modifier.fillMaxSize(), reportSize = !imeVisible, onTouched = closeSideways)
                 SideRails(
                     client = client, rails = rails, overlay = overlay, keyboardUp = keyboardWanted || imeVisible,
                     onOpen = { open(it) }, onKeyboard = { toggleKeyboard() },
@@ -217,12 +207,12 @@ fun StreamScreen(client: SillClient) {
                 PortraitDeckScreen(
                     client = client, latch = latch, overlay = overlay, keyboardUp = keyboardWanted || imeVisible,
                     onOpen = { open(it) }, onCloseOverlay = { overlay = Overlay.NONE }, onKeyboard = { toggleKeyboard() },
-                    onTapped = { tapped++ }, onTouched = closePanel, panel = { panelContent(it) },
+                    onTouched = closePanel, panel = { panelContent(it) },
                 )
             }
             else -> Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout).navigationBarsPadding()) {
                 // The picture in a fixed 16:10 pane: nothing below it moves when windows change.
-                VideoPanel(client, Modifier.fillMaxWidth().padding(8.dp).aspectRatio(1.6f), onTouched = closePanel, onTapped = { tapped++ })
+                VideoPanel(client, Modifier.fillMaxWidth().padding(8.dp).aspectRatio(1.6f), onTouched = closePanel)
                 PhoneButtons(bar)
                 Strip(client, Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 6.dp))
                 KeyRow(client, latch, full = false, onKeyboard = { toggleKeyboard() }, keyboardUp = keyboardWanted || imeVisible)
