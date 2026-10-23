@@ -147,6 +147,17 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     /** The windows as the device lists them: the favorite app's right after the Desktop (`WindowOrder`). */
     val listedWindows: List<WindowInfo> get() = WindowOrder.favoriteFirst(windows, favoriteApp)
 
+    /**
+     * Whether to ask for the notification permission now: Android 13 and later show the "Sill is connected" notice
+     * (`SessionService`) only with it, and the service runs either way. Asked once, when a session has begun, so the
+     * person sees why: it is the one place the app stays alive for them.
+     */
+    fun shouldAskNotifications(context: Context): Boolean =
+        android.os.Build.VERSION.SDK_INT >= 33 && !prefs.getBoolean("askedNotifications", false) &&
+            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    fun askedNotifications() { prefs.edit().putBoolean("askedNotifications", true).apply() }
+
     /** The zoom each source was left at, so switching apps does not carry one app's zoom into another. */
     val zooms = me.saffer.sill.android.ui.input.ZoomMemory()
 
@@ -203,8 +214,24 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     private var previousActive: StreamSource = StreamSource.None
     private var panel: Pair<Double, Double>? = null
     private var panelPx: Pair<Int, Int>? = null
-    /** The Aa choice (Viewport.scale), kept between sessions: a window the Mac opens on is sized to it at once, as it was left. */
-    var textScale by mutableStateOf<Double?>(prefs.getFloat("textScale", 0f).takeIf { it > 0f }?.toDouble()); private set
+    /** The Aa choice of each app and the default (`TextScales`), kept between sessions: a window the Mac opens on is sized to it at once, as it was left. */
+    private val scales = TextScales.parse(prefs.getFloat("textScale", 0f).takeIf { it > 0f }?.toDouble(), prefs.getString("textScalesByApp", null))
+    /** Aa for what streams now (the active app's, or the default for the Desktop). */
+    var textScale by mutableStateOf<Double?>(scales.defaultScale); private set
+
+    /** The app a source belongs to, by bundle id; null for the Desktop and for nothing. */
+    private fun bundleOf(source: StreamSource): String? = (source as? StreamSource.Window)?.let { w -> windows.firstOrNull { it.id == w.id }?.bundleID?.takeIf { it.isNotEmpty() } }
+
+    /** The app's own Aa goes to the Mac before the pick, so the window is sized right when it comes up, not after. */
+    private fun adoptScaleFor(bundleID: String?) {
+        val wanted = scales.scaleFor(bundleID)
+        if (wanted == textScale) return
+        textScale = wanted
+        sendViewport(immediately = true)
+    }
+
+    /** Which app (or the Desktop) the Aa panel is about, for its note. */
+    fun textScaleSubject(): String = (active as? StreamSource.Window)?.let { w -> windows.firstOrNull { it.id == w.id }?.appName?.takeIf { it.isNotEmpty() } } ?: "the Desktop"
     private var lastViewportJson: String? = null
     private var viewportPending: Runnable? = null
     private var unsupportedSize: Pair<Int, Int>? = null
@@ -603,6 +630,8 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         thumbnails.keys.retainAll(ids)
         val was = active
         active = list.active
+        // A window the Mac or another device picked has its own Aa too.
+        if (first) textScale = scales.scaleFor(bundleOf(list.active)) else adoptScaleFor(bundleOf(list.active))   // the first viewport of a session says it
         if (first) {
             sessionReady = true
             phase = Phase.Streaming
@@ -767,11 +796,13 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     fun select(source: StreamSource, user: Boolean = true) {
         val s = session ?: return
         if (user) lastUserPickAt = SystemClock.uptimeMillis()
+        adoptScaleFor(bundleOf(source))
         s.sendJson(Kind.SELECT_SOURCE, Payloads.select(source))
     }
 
     fun launch(app: AppInfo) {
         lastUserPickAt = SystemClock.uptimeMillis()
+        adoptScaleFor(app.bundleID)
         session?.sendJson(Kind.LAUNCH_APP, Payloads.launchApp(app.bundleID))
     }
 
@@ -793,7 +824,8 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
 
     fun chooseTextScale(scale: Double?) {
         textScale = scale
-        prefs.edit().putFloat("textScale", scale?.toFloat() ?: 0f).apply()
+        scales.choose(bundleOf(active), scale)
+        prefs.edit().putFloat("textScale", scales.defaultScale?.toFloat() ?: 0f).putString("textScalesByApp", scales.toJson()).apply()
         sendViewport(immediately = false)
     }
 

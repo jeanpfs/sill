@@ -255,7 +255,7 @@ internal fun Toggle(label: String, on: Boolean, enabled: Boolean = true, onChang
 fun ScalePanel(client: SillClient, modifier: Modifier, onDone: () -> Unit) {
     PanelFrame(modifier, "Text Size", onDone) {
         Column(Modifier.padding(horizontal = 18.dp).padding(bottom = 14.dp)) {
-            Note("Sizes the Mac window to this screen so its text shows at this scale. Off leaves the window as it is.")
+            Note("Sizes the Mac window to this screen so its text shows at this scale. Off leaves the window as it is. This is ${client.textScaleSubject()}'s size; each app remembers its own.")
             Spacer(Modifier.size(6.dp))
             Choice("Off", client.textScale == null) { client.chooseTextScale(null) }
             listOf(0.5, 0.75, 1.0, 1.25, 1.5).forEach { v -> Choice(scaleLabel(v), client.textScale == v) { client.chooseTextScale(v) } }

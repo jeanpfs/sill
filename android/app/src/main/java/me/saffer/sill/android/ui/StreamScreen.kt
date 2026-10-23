@@ -121,6 +121,14 @@ fun StreamScreen(client: SillClient) {
     var overlay by remember { mutableStateOf(Overlay.NONE) }
     var confirmLeave by remember { mutableStateOf(false) }
     val latch = remember { Latch() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val askNotifications = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(client.phase) {
+        if (client.phase is SillClient.Phase.Streaming && client.shouldAskNotifications(context)) {
+            client.askedNotifications()
+            askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
     var sink by remember { mutableStateOf<KeyboardSink?>(null) }
     var keyboardWanted by remember { mutableStateOf(false) }
     val imeVisible = WindowInsets.isImeVisible
