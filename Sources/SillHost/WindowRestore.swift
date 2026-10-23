@@ -162,6 +162,10 @@ enum WindowRestore {
         mutating func isListed(_ w: W) -> Bool
         /// The visible frame of the display holding most of `r`; nil with no display.
         mutating func visibleArea(around r: CGRect) -> CGRect?
+        /// The visible frame of a display with more pixels per point than the one `area` is the frame of, when
+        /// there is one: a window fitted for a device is drawn there at full resolution, and the device shows
+        /// its text sharp, where on a 1x monitor it would be a third of the pixels it needs.
+        mutating func sharperArea(than area: CGRect) -> CGRect?
         mutating func setPosition(_ w: W, _ p: CGPoint) -> Write
         mutating func setSize(_ w: W, _ s: CGSize) -> Write
         /// Moves and sizes it to `frame` as the virtual display's restore does (position, size,
@@ -172,6 +176,14 @@ enum WindowRestore {
         func name(_ w: W) -> String
     }
 
+}
+
+extension WindowRestore.Access {
+    /// One display: nothing sharper to move to.
+    mutating func sharperArea(than area: CGRect) -> CGRect? { nil }
+}
+
+extension WindowRestore {
     /// What a fit (`fit`) came to.
     enum FitResult: Equatable {
         /// Not tried: the window is in a full-screen Space. It may refuse the writes or answer them and
@@ -196,7 +208,8 @@ enum WindowRestore {
         if a.isFullScreen(w) { return .fullScreen }
         let read = a.frame(w)
         let before = read ?? fallback
-        let area = a.visibleArea(around: before)
+        var area = a.visibleArea(around: before)
+        if let own = area, let sharper = a.sharperArea(than: own) { area = sharper }
         var nudgedFrom: CGPoint?
         var at = before.origin
         if let from = read?.origin, let area {

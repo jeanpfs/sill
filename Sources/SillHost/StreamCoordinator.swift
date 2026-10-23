@@ -1401,7 +1401,6 @@ package final class StreamCoordinator {
             }
             if sourceRect == nil {
                 // Today's path: capture the window where it is.
-                filter = SCContentFilter(desktopIndependentWindow: w)
                 // Regular mode raises the picked window (2026-09-23, Noah: the Mac must show the
                 // picked window). A covered window stops repainting, so it would stream frozen, and
                 // keys go to the active app's key window. Done before capture starts, so the first
@@ -1413,7 +1412,18 @@ package final class StreamCoordinator {
                 // The size the resize reports, not the window server's bounds: they still show the old frame for a
                 // moment after the resize, and a stream started at that size shows the window at its old shape
                 // until the catalog notices, then restarts (the flash of a wrong-sized picture on every switch).
-                if let resized = fitToViewport(w) { size = resized }
+                var shown = w
+                if let resized = fitToViewport(w) {
+                    size = resized
+                    // The fit may have moved the window to a sharper display (WindowRestore.fit); `w` is a snapshot
+                    // from before, with that display's scale, and the filter's scale and the capture size follow it.
+                    // Only with displays of different scales is there anything to look at again.
+                    if Set(NSScreen.screens.map(\.backingScaleFactor)).count > 1 {
+                        await catalog.refreshWindows()
+                        if let fresh = catalog.window(id: id) { shown = fresh }
+                    }
+                }
+                filter = SCContentFilter(desktopIndependentWindow: shown)
                 describe = "\(w.owningApplication?.applicationName ?? "?") — \(w.title ?? "")\(useSoftwareEncoder ? " (software encoder)" : "")"
             }
             // A window drawn at 1× (a Chromium app in low resolution: Opera) has no more pixels than points, and

@@ -78,6 +78,7 @@ final class WindowSizer {
         func isFullScreen(_ p: Placement) -> Bool { WindowSizer.isFullScreen(p.element) }
         func isListed(_ p: Placement) -> Bool { WindowSizer.liveBounds(of: p.windowID) != nil }
         func visibleArea(around r: CGRect) -> CGRect? { WindowSizer.visibleArea(around: r) }
+        func sharperArea(than area: CGRect) -> CGRect? { WindowSizer.sharperArea(than: area) }
         func setPosition(_ p: Placement, _ origin: CGPoint) -> WindowRestore.Write { WindowSizer.write(WindowSizer.set(p.element, position: origin)) }
         func setSize(_ p: Placement, _ size: CGSize) -> WindowRestore.Write { WindowSizer.write(WindowSizer.set(p.element, size: size)) }
         func put(_ p: Placement, at frame: CGRect) -> Bool { sizer.restore(p.homed(at: frame)) }
@@ -353,6 +354,20 @@ final class WindowSizer {
             return i.isNull ? 0 : i.width * i.height
         }
         return areas.max { overlap($0) < overlap($1) }
+    }
+
+    /// The visible frame (CG global points) of the display with the most pixels per point, when it has more
+    /// than the display `area` belongs to; nil when `area` is already on the sharpest one.
+    static func sharperArea(than area: CGRect) -> CGRect? {
+        guard let primaryHeight = NSScreen.screens.first?.frame.height else { return nil }
+        func cg(_ screen: NSScreen) -> CGRect {
+            let v = screen.visibleFrame
+            return CGRect(x: v.minX, y: primaryHeight - v.maxY, width: v.width, height: v.height)
+        }
+        guard let here = NSScreen.screens.first(where: { abs(cg($0).minX - area.minX) < 1 && abs(cg($0).minY - area.minY) < 1 }),
+              let best = NSScreen.screens.max(by: { $0.backingScaleFactor < $1.backingScaleFactor }),
+              best.backingScaleFactor > here.backingScaleFactor else { return nil }
+        return cg(best)
     }
 
     // MARK: AX attribute plumbing
