@@ -61,6 +61,24 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Android 10 (API 29) or later: TLS 1.3 and ALPN on `SSLSocket` are what the Mac's doors require.
 
+## Text sharpness
+
+Sharpness is not a smooth function of the Text Size (Aa): any fractional enlargement of the picture costs most of
+it, and only a 1:1 picture is exact. Measured on the same static text (edge width, lower is crisper; 1.41 is the
+source's own):
+
+| | edge width |
+|---|---|
+| Aa 1×, the panel enlarges the 2× capture by 1.31 (bilinear) | 1.88 |
+| Aa 1× with Settings > Sharper Enlargement (bicubic) | 1.73 |
+| Aa ¾×, the window sized to exactly half the panel's pixels, shown 1:1 | 1.52 |
+
+So ¾× is the crisp setting on a Z Fold8 (the Mac captures the window at exactly 2.0× and nothing resamples it),
+and the host snaps the window to that size when ¾× or 4/5× is chosen (`Viewport.crispWindowSize`). Sharper
+Enlargement is for people who want 1×: a GL view with a Catmull-Rom filter in place of the compositor's bilinear
+one. It is off by default because it costs about 1.5 points of CPU, ~115 MB of memory and a frame of display
+delay (not measured), and it changes nothing at ¾× (identity at 1:1, measured).
+
 ## Switching to another Android app
 
 While a session is open, Sill runs a foreground service (the ongoing "Sill is connected to your Mac"
