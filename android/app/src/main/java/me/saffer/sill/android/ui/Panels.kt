@@ -1,11 +1,6 @@
 package me.saffer.sill.android.ui
 
 import androidx.compose.foundation.Image
-import me.saffer.sill.android.protocol.AppInfo
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -95,8 +90,6 @@ private fun PanelFrame(modifier: Modifier, title: String, onDone: () -> Unit, ba
 @Composable
 fun AppsPanel(client: SillClient, modifier: Modifier, onDone: () -> Unit) {
     var query by remember { mutableStateOf("") }
-    var menuFor by remember { mutableStateOf<String?>(null) }
-    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val launchable = client.apps
     PanelFrame(modifier, "Apps", onDone) {
         LazyColumn(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
@@ -110,56 +103,13 @@ fun AppsPanel(client: SillClient, modifier: Modifier, onDone: () -> Unit) {
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp))
             }
             items(shown, key = { "a${it.bundleID}" }) { a ->
-                Box {
-                    Row(Modifier.fillMaxWidth().combinedClickable(
-                        onClick = { client.launch(a); onDone() },
-                        onLongClick = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); menuFor = a.bundleID; client.launch(a) },
-                    ).padding(horizontal = 18.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        AppIcon(client, a.bundleID)
-                        Spacer(Modifier.size(14.dp))
-                        Text(a.name, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    AppMenu(client, a, menuFor == a.bundleID, onDismiss = { menuFor = null }, onChosen = { menuFor = null; onDone() })
+                Row(Modifier.fillMaxWidth().clickable { client.launch(a); onDone() }.padding(horizontal = 18.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    AppIcon(client, a.bundleID)
+                    Spacer(Modifier.size(14.dp))
+                    Text(a.name, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-        }
-    }
-}
-
-/**
- * An app's long-press menu: what its File menu offers (the menu after the app's own on the Mac), such as New
- * Window or New Private Window. Holding the app opens it on the Mac and brings it forward; its menus then reach
- * the device as the frontmost app's, and the File menu is asked for. An item chosen is pressed on the Mac.
- */
-@Composable
-private fun AppMenu(client: SillClient, app: AppInfo, expanded: Boolean, onDismiss: () -> Unit, onChosen: () -> Unit) {
-    @Suppress("UNUSED_VARIABLE") val rev = client.menuRevision
-    val state = client.menuState
-    val file = if (state.bundleID == app.bundleID) state.top.getOrNull(1) else null
-    val opened = file?.id?.let { state.menus[it] }
-    androidx.compose.runtime.LaunchedEffect(expanded, file?.id, opened == null) { if (expanded && file != null && opened == null) client.openMenu(file) }
-    var gaveUp by remember(expanded) { mutableStateOf(false) }
-    androidx.compose.runtime.LaunchedEffect(expanded) { if (expanded) { kotlinx.coroutines.delay(8_000); gaveUp = true } }
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        Text(app.name, fontSize = 13.sp, color = SillColors.secondaryText, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp).width(240.dp))
-        when (opened) {
-            is MenuState.Menu.Items -> {
-                val rows = opened.items.filter { !it.separator && !it.submenu && !it.title.isNullOrBlank() }
-                if (rows.isEmpty()) Text("Nothing to open here.", fontSize = 14.sp, color = SillColors.secondaryText, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
-                rows.forEach { item ->
-                    DropdownMenuItem(
-                        enabled = item.enabled && !opened.stale,
-                        text = { Text(item.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        trailingIcon = item.key?.let { k -> { Text(k, fontSize = 12.sp, color = SillColors.secondaryText) } },
-                        onClick = { client.chooseMenuItem(item); onChosen() },
-                    )
-                }
-            }
-            is MenuState.Menu.Failed -> Text(opened.why, fontSize = 14.sp, color = SillColors.secondaryText, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
-            else -> if (gaveUp) Text("${app.name} did not show its menu.", fontSize = 14.sp, color = SillColors.secondaryText, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
-            else Box(Modifier.width(240.dp).padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(22.dp)) }
         }
     }
 }
