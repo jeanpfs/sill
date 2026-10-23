@@ -29,4 +29,21 @@ class StartPickTest {
     @Test fun aWindowAlreadyStreamedIsNotTakenOver() {
         assertNull(StartPick.choose("dev.warp.Warp-Stable", windows, StreamSource.Window(1)))
     }
+
+    @Test fun aResumedSessionOpensWhereItWasLeft() {
+        assertEquals(StreamSource.Window(1), StartPick.choose("dev.warp.Warp-Stable", windows, StreamSource.None, "app:com.apple.Safari"))
+    }
+
+    @Test fun aResumedDesktopStaysTheDesktopEvenWithAFavorite() {
+        assertNull(StartPick.choose("dev.warp.Warp-Stable", windows, StreamSource.None, "desktop"))
+    }
+
+    @Test fun aResumedAppThatClosedFallsBackToTheFavorite() {
+        assertEquals(StreamSource.Window(2), StartPick.choose("dev.warp.Warp-Stable", windows, StreamSource.None, "app:com.apple.TextEdit"))
+        assertNull(StartPick.choose(null, windows, StreamSource.None, "app:com.apple.TextEdit"))
+    }
+
+    @Test fun aResumeKeyNamingAWindowByIdIsIgnored() {
+        assertEquals(StreamSource.Window(2), StartPick.choose("dev.warp.Warp-Stable", windows, StreamSource.None, "window:7"))
+    }
 }

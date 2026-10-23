@@ -351,7 +351,7 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         val p = phase
         if (!reconnecting && currentMac?.macID == mac.macID && (p is Phase.Streaming || p is Phase.Connecting)) return
         // A live session replaced (a pairing link confirmed while streaming): nothing of it carries over.
-        session?.let { it.close("another connection"); session = null; endSessionState() }
+        session?.let { it.close("another connection"); session = null; endSessionState(); resumeKey = null }
         val gen = ++generation
         currentMac = mac
         macName = mac.name
@@ -406,6 +406,7 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         session?.close("disconnected by the user")
         session = null
         endSessionState()
+        resumeKey = null   // the person left: the next session starts as a new one
         phase = Phase.Idle
         status = null
     }
@@ -457,7 +458,11 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         return true
     }
 
+    /** What the session showed when it ended without the person closing it (`StartPick`); the next one opens on it. */
+    private var resumeKey: String? = null
+
     private fun endSessionState() {
+        if (sessionReady) resumeKey = sourceKey()
         decoder.reset()
         params = null
         sessionReady = false
@@ -611,7 +616,9 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
             syncTextFocusSubscription()
         }
         // A session begins on the favorite app when it is open, in place of the Desktop.
-        val start = if (first) StartPick.choose(favoriteApp, list.windows, list.active) else null
+        val resume = if (first) resumeKey else null
+        if (first) resumeKey = null
+        val start = if (first) StartPick.choose(favoriteApp, list.windows, list.active, resume) else null
         if (start != null) {
             lastAutoDesktopAt = SystemClock.uptimeMillis()
             select(start, user = false)
