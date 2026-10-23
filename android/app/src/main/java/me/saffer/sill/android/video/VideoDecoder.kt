@@ -19,8 +19,9 @@ import java.util.ArrayDeque
  * thread, each output rendered the moment it is decoded (latency beats smoothness, CLAUDE.md), the
  * Mac's length-prefixed NAL units turned into Annex B. New parameter sets (a new size, a restart)
  * make a new codec. While the screen's surface is gone (rotation, the app in the background) the
- * codec renders into a parked SurfaceTexture, so it keeps its reference frames and the picture
- * comes back without waiting for a keyframe.
+ * codec goes on decoding without showing, so it keeps its reference frames and the picture comes
+ * back without waiting for a keyframe. (A parked SurfaceTexture is only what a codec is configured
+ * on when it must start with no surface.)
  */
 class VideoDecoder(private val events: Events) {
     interface Events {
@@ -54,7 +55,7 @@ class VideoDecoder(private val events: Events) {
 
     /**
      * SurfaceHolder.Callback.surfaceDestroyed: nothing may render into the surface once the callback
-     * returns, so the codec moves to the parked texture before it does (at most half a second).
+     * returns, so the codec stops showing before it does (at most half a second).
      */
     fun detachSurfaceNow() {
         if (Looper.myLooper() == thread.looper) { switchTo(null); return }
@@ -63,23 +64,34 @@ class VideoDecoder(private val events: Events) {
         done.await(500, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
 
+    /** Whether the decoder's pictures go to the screen: false while the app has no surface (it is in the background). */
+    @Volatile private var rendering = true
+
     private fun switchTo(surface: Surface?) {
         screen = surface?.takeIf { it.isValid }
-        val target = screen ?: parkSurface()
-        if (target !== output) {
-            val c = codec
-            if (c != null) {
-                try {
-                    c.setOutputSurface(target)
-                    output = target
-                } catch (e: Exception) {
-                    Log.w(TAG, "setOutputSurface failed, rebuilding: ${e.message}")
-                    rebuild()
-                }
-            } else {
-                output = target
-                if (sets != null) rebuild()
+        val shown = screen
+        if (shown == null) {
+            // No surface: the codec goes on decoding without showing, so it is in step when a surface returns. Moving
+            // it to a parked texture instead failed here (setOutputSurface threw on the Qualcomm decoder, the
+            // rebuild after it could not configure, and three failures in 10 s were taken for "this size is not
+            // supported": the Mac was asked for Standard resolution each time the app went to the background).
+            rendering = false
+            return
+        }
+        rendering = true
+        if (shown === output) return
+        val c = codec
+        if (c != null) {
+            try {
+                c.setOutputSurface(shown)
+                output = shown
+            } catch (e: Exception) {
+                Log.w(TAG, "setOutputSurface failed, rebuilding: ${e.message}")
+                rebuild()
             }
+        } else {
+            output = shown
+            if (sets != null) rebuild()
         }
     }
 
@@ -159,6 +171,8 @@ class VideoDecoder(private val events: Events) {
     private fun teardown() {
         codec?.let { c -> runCatching { c.stop() }; runCatching { c.release() } }
         codec = null
+        // A parked surface a released codec was on may still be connected to its texture: a new one each time.
+        parked?.release(); parkTexture?.release(); parked = null; parkTexture = null
         freeInputs.clear()
         pending.clear()
         latency.clear()
@@ -245,7 +259,7 @@ class VideoDecoder(private val events: Events) {
         }
         override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
             if (codec !== this@VideoDecoder.codec) return
-            runCatching { codec.releaseOutputBuffer(index, true) }
+            runCatching { codec.releaseOutputBuffer(index, rendering) }
             noteOutput(info.presentationTimeUs)
             decodedFrames++
             events.onFrameRendered()
