@@ -78,5 +78,19 @@ check(near(scale(fold, 0, 982), 2) && near(scale(fold, 1512, 0), 2), "an empty s
 check(near(scale(Viewport(width: 1, height: 1, scale: nil, pixelWidth: 2418, pixelHeight: nil), 1512, 982), 2), "a half-reported pixel size is ignored")
 check(near(scale(Viewport(width: 1, height: 1, scale: nil, pixelWidth: 0, pixelHeight: 0), 1512, 982), 2), "a zero pixel size is ignored")
 
+// crispWindowSize: the window size the panel shows 1:1.
+do {
+    let v = Viewport(width: 932, height: 704, scale: 0.75, pixelWidth: 2448, pixelHeight: 1848)
+    let c = v.crispWindowSize(ceiling: 2, target: (1243, 939))
+    check(c?.width == 1224 && c?.height == 924, "3/4x on the Fold (1243x939 pt) snaps to exactly half the panel: \(String(describing: c))")
+    check(v.crispWindowSize(ceiling: 2, target: (1166, 880)) != nil, "4/5x (fit 2.10) snaps too")
+    check(v.crispWindowSize(ceiling: 2, target: (933, 704)) == nil, "1x (fit 2.63) is left alone")
+    check(v.crispWindowSize(ceiling: 2, target: (1864, 1408)) == nil, "1/2x (fit 1.31) is left alone")
+    check(v.crispWindowSize(ceiling: 1, target: (1243, 939)) == nil, "Standard (ceiling 1) never snaps")
+    check(Viewport(width: 932, height: 704, scale: 1).crispWindowSize(ceiling: 2, target: (1243, 939)) == nil, "an older client (no pixels) never snaps")
+    let snapped = v.captureScale(ceiling: 2, pointsWidth: c!.width, pointsHeight: c!.height)
+    check(snapped == 2.0 && Int(c!.width * snapped) == 2448 && Int(c!.height * snapped) == 1848, "the snapped window is captured at exactly 2.0x: 2448x1848, the panel's own pixels")
+}
+
 print(failures == 0 ? "all checks passed" : "\(failures) FAILED")
 exit(failures == 0 ? 0 : 1)

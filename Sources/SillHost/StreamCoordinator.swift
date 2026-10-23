@@ -1126,7 +1126,11 @@ package final class StreamCoordinator {
     /// (`restoreFits`, issue #57). None once the host is shutting down: nothing would put it back.
     private func fitToViewport(_ window: SCWindow) -> CGSize? {
         guard !shuttingDown, let v = viewport, let textScale = v.scale, textScale > 0, v.width > 0, v.height > 0 else { return nil }
-        let target = CGSize(width: (v.width / textScale).rounded(), height: (v.height / textScale).rounded())
+        var target = CGSize(width: (v.width / textScale).rounded(), height: (v.height / textScale).rounded())
+        // Near the size the panel shows 1:1, take exactly that one (Viewport.crispWindowSize).
+        if let crisp = v.crispWindowSize(ceiling: Double(captureScale), target: (Double(target.width), Double(target.height))) {
+            target = CGSize(width: crisp.width, height: crisp.height)
+        }
         let current = Self.liveBounds(of: window.windowID)?.size ?? window.frame.size
         if abs(current.width - target.width) <= 2, abs(current.height - target.height) <= 2 { return nil }
         guard let fit = sizer.resize(window: window, to: target) else { return nil }

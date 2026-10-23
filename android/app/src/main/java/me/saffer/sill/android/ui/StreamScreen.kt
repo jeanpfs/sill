@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
@@ -94,6 +95,9 @@ import me.saffer.sill.android.ui.input.TrackpadView
 
 /** What is open over the stream: at most one panel at a time, as on iOS. */
 enum class Overlay { NONE, APPS, SETTINGS, MENUS, SCALE }
+
+/** The key row sideways: its 52 dp and a little air under it. */
+private val SIDEWAYS_KEY_ROW = 58.dp
 
 /** A text focus that shows up this soon after a window was picked or a session began came with it, not from a click. */
 private const val SWITCH_QUIET_MS = 1500L
@@ -216,13 +220,24 @@ fun StreamScreen(client: SillClient) {
             // The keyboard covers the picture's bottom instead of shrinking it: the Mac's text keeps its size, the
             // picture moves up to keep the point being typed at in view (ImeLift), and the rails stay above the keys.
             !portrait -> Box(Modifier.fillMaxSize()) {
-                VideoPanel(client, Modifier.fillMaxSize(), onTouched = closeSideways, onTapped = { switchesAtTap = client.macTextSwitches; tapped++ }, covered = imeHeight)
-                Box(Modifier.fillMaxSize().imePadding()) {
-                    SideRails(
-                        client = client, rails = rails, overlay = overlay, keyboardUp = keyboardWanted || imeVisible,
-                        onOpen = { open(it) }, onKeyboard = { toggleKeyboard() },
-                        panel = { panelContent(Modifier) },
-                    )
+                // With the keyboard up a row of the keys it lacks (esc, tab, ctrl, arrows) rides on top of it, as it does
+                // upright; the picture rises above both.
+                val keyRowPx = with(LocalDensity.current) { SIDEWAYS_KEY_ROW.roundToPx() }
+                VideoPanel(client, Modifier.fillMaxSize(), onTouched = closeSideways, onTapped = { switchesAtTap = client.macTextSwitches; tapped++ },
+                    covered = if (imeVisible) imeHeight + keyRowPx else 0)
+                Column(Modifier.fillMaxSize().imePadding()) {
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        SideRails(
+                            client = client, rails = rails, overlay = overlay, keyboardUp = keyboardWanted || imeVisible,
+                            onOpen = { open(it) }, onKeyboard = { toggleKeyboard() },
+                            panel = { panelContent(Modifier) },
+                        )
+                    }
+                    if (imeVisible) Box(Modifier.fillMaxWidth().height(SIDEWAYS_KEY_ROW), contentAlignment = Alignment.Center) {
+                        Box(Modifier.widthIn(max = 620.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xE6111214))) {
+                            KeyRow(client, latch, full = true, onKeyboard = { toggleKeyboard() }, keyboardUp = true)
+                        }
+                    }
                 }
             }
             // Upright on a tablet or an open Fold: the picture on top and one deck under it, where the thumbs are.

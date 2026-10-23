@@ -48,6 +48,18 @@ extension Viewport {
         let fit = min(Double(pw) / pointsWidth, Double(ph) / pointsHeight)
         return min(ceiling, max(1, (fit * 1000).rounded(.down) / 1000))
     }
+
+    /// The window size, in Mac points, that the panel shows pixel for pixel: the panel's pixels over the capture
+    /// scale, when the size asked for (`target`) is already within a few percent of it, else nil. A window asked for
+    /// at 1243 pt on a 2448 px panel is captured at 1.968×, which makes the Mac resample its 2× window by 1.6 %
+    /// and costs most of the text's sharpness (edge width 1.70 against 1.41, measured); at exactly 1224 pt it is
+    /// captured at 2.0×, as it is drawn, and nothing resamples it. The window is at most 6 % off what was asked.
+    public func crispWindowSize(ceiling: Double, target: (width: Double, height: Double)) -> (width: Double, height: Double)? {
+        guard ceiling > 1, let pw = pixelWidth, let ph = pixelHeight, pw > 0, ph > 0, target.width > 0, target.height > 0 else { return nil }
+        let fit = min(Double(pw) / target.width, Double(ph) / target.height)
+        guard fit >= ceiling * 0.95, fit <= ceiling * 1.06 else { return nil }
+        return ((Double(pw) / ceiling).rounded(.down), (Double(ph) / ceiling).rounded(.down))
+    }
 }
 
 /// Client → host once a second while connected. Lets the Mac's log show what the device sees,

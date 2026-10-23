@@ -83,8 +83,8 @@ private fun PanelFrame(modifier: Modifier, title: String, onDone: () -> Unit, ba
 }
 
 /**
- * The Apps drawer: every installed app on the Mac, to launch (launching one streams its first window; an app that
- * is open is brought to its window). The Desktop and the windows already open are on the windows rail, so they are
+ * The Apps drawer: every installed app on the Mac (an app that is open goes to its window, a closed one is
+ * launched and streams its first window). The Desktop and the windows already open are on the windows rail, so they are
  * not listed here again.
  */
 @Composable
@@ -103,7 +103,12 @@ fun AppsPanel(client: SillClient, modifier: Modifier, onDone: () -> Unit) {
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp))
             }
             items(shown, key = { "a${it.bundleID}" }) { a ->
-                Row(Modifier.fillMaxWidth().clickable { client.launch(a); onDone() }.padding(horizontal = 18.dp, vertical = 8.dp),
+                Row(Modifier.fillMaxWidth().clickable {
+                    // An app that is open goes to its window (the Mac only streams a window an app has just opened); a closed one is launched.
+                    val open = client.listedWindows.firstOrNull { it.bundleID == a.bundleID }
+                    if (open != null) client.select(StreamSource.Window(open.id)) else client.launch(a)
+                    onDone()
+                }.padding(horizontal = 18.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     AppIcon(client, a.bundleID)
                     Spacer(Modifier.size(14.dp))
