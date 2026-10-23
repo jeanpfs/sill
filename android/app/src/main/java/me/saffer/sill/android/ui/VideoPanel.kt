@@ -62,7 +62,8 @@ fun VideoPanel(
 ) {
     val density = LocalDensity.current
     var panel by remember { mutableStateOf(IntSize.Zero) }
-    var zoom by remember { mutableStateOf(StreamZoom.IDENTITY) }
+    val sourceKey = client.sourceKey()
+    var zoom by remember(sourceKey) { mutableStateOf(client.zooms[sourceKey]) }
     val fit = fitRect(panel, client.videoSize)
     // The picture as shown: the aspect fit, enlarged by the pinch. Touch, pointer sprite and decoder
     // surface all follow this one rect, so a tap lands under the finger at any zoom.
@@ -114,7 +115,10 @@ fun VideoPanel(
                 update = { v ->
                     v.videoRect = rect ?: RectF(); v.onTouchedPicture = onTouched; v.onTapped = onTapped; v.zoomed = zoom.zoomed
                     v.onPinch = { k, x, y, dx, dy ->
-                        if (fit != null) zoom = zoom.pinch(k, x, y, dx, dy, ZoomFrame(fit.left, fit.top, fit.width(), fit.height()), panel.width.toFloat(), panel.height.toFloat())
+                        if (fit != null) {
+                            zoom = zoom.pinch(k, x, y, dx, dy, ZoomFrame(fit.left, fit.top, fit.width(), fit.height()), panel.width.toFloat(), panel.height.toFloat())
+                            client.zooms[sourceKey] = zoom
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxSize(),

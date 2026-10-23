@@ -137,6 +137,16 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         prefs.edit().apply { if (bundleID == null) remove("favoriteApp") else putString("favoriteApp", bundleID) }.apply()
     }
 
+    /** The zoom each source was left at, so switching apps does not carry one app's zoom into another. */
+    val zooms = me.saffer.sill.android.ui.input.ZoomMemory()
+
+    /** What the stream shows, as `ZoomMemory` keys it. */
+    fun sourceKey(): String = when (val a = active) {
+        StreamSource.None -> me.saffer.sill.android.ui.input.ZoomMemory.NONE
+        StreamSource.Desktop -> me.saffer.sill.android.ui.input.ZoomMemory.DESKTOP
+        is StreamSource.Window -> me.saffer.sill.android.ui.input.ZoomMemory.window(windows.firstOrNull { it.id == a.id }?.bundleID.orEmpty(), a.id)
+    }
+
     /** Open the soft keyboard by itself when a text field takes focus on the Mac. */
     var autoKeyboard by mutableStateOf(prefs.getBoolean("autoKeyboard", true)); private set
     fun useAutoKeyboard(on: Boolean) {
