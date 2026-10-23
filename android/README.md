@@ -61,6 +61,25 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Android 10 (API 29) or later: TLS 1.3 and ALPN on `SSLSocket` are what the Mac's doors require.
 
+## Install and debug without a cable (Tailscale)
+
+`adb` can reach the phone through the tailnet, so the app installs and debugs from anywhere both are on
+it, and the Wi-Fi's client isolation (which hides the phone from the Mac on the LAN) does not matter.
+Once, on the phone: Developer options > **Wireless debugging** on (Wi-Fi needed to switch it on), then
+**Pair device with pairing code**; it shows a code and an address with a port. On the Mac:
+
+```
+scripts/adb-tailscale.sh pair PORT CODE     # PORT and CODE from that dialog, once per Mac
+scripts/adb-tailscale.sh connect            # finds the connect port, which changes whenever Wireless debugging is switched on
+scripts/install.sh                          # build, install the release, compile it, launch
+scripts/install.sh --debug                  # the debuggable build, for adb logcat and profilers
+```
+
+Then `adb logcat`, `adb shell`, `simpleperf` and `adb install` work as with the cable (`scripts/adb-tailscale.sh
+status` shows what adb sees; `off` disconnects). The connect port changes each time Wireless debugging is
+switched off and on or the phone restarts: run `connect` again, no new pairing. For a port that stays,
+plug the cable once after each restart and run `adb tcpip 5555`, then `adb connect <tailnet address>:5555`.
+
 ## Installing for daily use (performance)
 
 Install the **release** build and have ART compile it at once. A debug build is 63 MB, runs with a
