@@ -306,7 +306,7 @@ private fun WindowsPane(client: SillClient) {
                 Icon(Icons.Filled.DesktopMac, null, Modifier.size(40.dp), tint = SillColors.accent)
             }
         }
-        items(client.windows, key = { it.id }) { w ->
+        items(client.listedWindows, key = { it.id }) { w ->
             val selected = (client.active as? StreamSource.Window)?.id == w.id
             Box {
                 WindowCard(selected, w.appName.ifEmpty { w.title }, w.title,

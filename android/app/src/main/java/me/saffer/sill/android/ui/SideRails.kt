@@ -266,7 +266,7 @@ private fun WindowsRail(
                     Icon(Icons.Filled.DesktopMac, null, Modifier.size(22.dp), tint = if (client.active == StreamSource.Desktop) SillColors.accent else Color.White)
                 }
             }
-            items(client.windows, key = { it.id }) { w ->
+            items(client.listedWindows, key = { it.id }) { w ->
                 val selected = (client.active as? StreamSource.Window)?.id == w.id
                 Box {
                     RailTile(selected, "Stream ${w.title}", onClick = { touch(); client.select(StreamSource.Window(w.id)) }, onLongClick = {

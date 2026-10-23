@@ -137,6 +137,9 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         prefs.edit().apply { if (bundleID == null) remove("favoriteApp") else putString("favoriteApp", bundleID) }.apply()
     }
 
+    /** The windows as the device lists them: the favorite app's right after the Desktop (`WindowOrder`). */
+    val listedWindows: List<WindowInfo> get() = WindowOrder.favoriteFirst(windows, favoriteApp)
+
     /** The zoom each source was left at, so switching apps does not carry one app's zoom into another. */
     val zooms = me.saffer.sill.android.ui.input.ZoomMemory()
 

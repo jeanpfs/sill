@@ -98,7 +98,7 @@ fun AppsPanel(client: SillClient, modifier: Modifier, onDone: () -> Unit) {
                 }
             }
             if (client.windows.isNotEmpty()) item { Header("Open now") }
-            items(client.windows, key = { "w${it.id}" }) { w ->
+            items(client.listedWindows, key = { "w${it.id}" }) { w ->
                 Row(Modifier.fillMaxWidth().clickable { client.select(StreamSource.Window(w.id)); onDone() }.padding(horizontal = 18.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     AppIcon(client, w.bundleID)

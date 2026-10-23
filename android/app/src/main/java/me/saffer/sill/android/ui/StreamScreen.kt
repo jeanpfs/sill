@@ -333,7 +333,7 @@ fun scaleLabel(s: Double) = when (s) { 0.5 -> "½×"; 0.75 -> "¾×"; 1.0 -> "1�
 fun Strip(client: SillClient, modifier: Modifier) {
     LazyRow(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         item(key = "desktop") { DesktopTile(client) }
-        items(client.windows, key = { it.id }) { w -> Thumb(client, w) }
+        items(client.listedWindows, key = { it.id }) { w -> Thumb(client, w) }
     }
 }
 
