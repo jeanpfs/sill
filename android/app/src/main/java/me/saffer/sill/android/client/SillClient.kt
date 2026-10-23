@@ -455,7 +455,7 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
         params = null
         sessionReady = false
         windows = emptyList(); active = StreamSource.None; previousActive = StreamSource.None
-        thumbnails.clear(); apps = emptyList(); videoSize = null; cursor = null; stats = null
+        thumbnails.clear(); apps = emptyList(); videoSize = null; videoSizeShown = false; pendingVideoSize = null; cursor = null; stats = null
         hasSettings = false; hostState = null; shownSettings = null; ledger.reset(); settingsRevision++; resolutionAsked = false
         macTextFocused = false; macTextSwitches = 0; macTextSecure = false; hostTextFocus = 0
         menuState.reset(); menuRevision++; hasMenus = false
@@ -704,9 +704,28 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
 
     // MARK: VideoDecoder.Events (decoder thread)
 
+    /** A size the stream changed to, waiting for the first picture of it (`onFrameRendered`); decoder thread writes, main reads. */
+    @Volatile private var pendingVideoSize: Pair<Int, Int>? = null
+    /** `videoSize` has been set this session: the picture has a surface to hold the last frame on. */
+    @Volatile private var videoSizeShown = false
+
     override fun onVideoSize(width: Int, height: Int) {
-        // A new size can change the rate this device's decoder sustains: the viewport says it again.
-        main.post { videoSize = width to height; sendViewport(immediately = false) }
+        if (videoSizeShown) {
+            // The decoder was rebuilt for another size, and the surface still shows the last picture of the old
+            // one. The layout keeps that size until the first picture of the new one is out: switching it now would
+            // stretch the old picture to the new shape for as long as the decoder takes to start.
+            pendingVideoSize = width to height
+        } else {
+            videoSizeShown = true
+            // A new size can change the rate this device's decoder sustains: the viewport says it again.
+            main.post { videoSize = width to height; sendViewport(immediately = false) }
+        }
+    }
+
+    override fun onFrameRendered() {
+        val size = pendingVideoSize ?: return
+        pendingVideoSize = null
+        main.post { videoSize = size; sendViewport(immediately = false) }
     }
 
     override fun onUnsupportedSize(width: Int, height: Int) {
