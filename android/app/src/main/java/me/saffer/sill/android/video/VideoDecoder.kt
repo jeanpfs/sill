@@ -43,6 +43,11 @@ class VideoDecoder(private val events: Events) {
     private var output: Surface? = null
     private val freeInputs = ArrayDeque<Int>()
     private val pending = ArrayDeque<Pending>()
+    /** The stream since its last keyframe, to bring a decoder made again to the current picture at once (`GopCache`). */
+    private val gop = GopCache()
+    /** While the frames of a replay are being decoded: nothing is shown until the last of them, and the backlog check waits. */
+    private var replaying = false
+    private var replayUntilPts = 0L
     private var needKeyframe = true
     private var configuredSize: Pair<Int, Int>? = null
 
@@ -101,6 +106,7 @@ class VideoDecoder(private val events: Events) {
 
     fun onParameterSets(ps: ParameterSets) = handler.post {
         if (ps.sameAs(sets) && codec != null) return@post
+        if (!ps.sameAs(sets)) gop.clear()              // another size or stream: its frames are of no use to this one
         sets = ps
         failures = 0
         rebuild()
@@ -108,19 +114,22 @@ class VideoDecoder(private val events: Events) {
 
     fun onFrame(payload: ByteArray, keyframe: Boolean, hostTimestamp: Double) = handler.post {
         val ps = sets ?: return@post
+        val annexB = ParameterSets.toAnnexB(payload, ps.nalLength) ?: return@post
+        val frame = Pending(annexB, nextPts(hostTimestamp), keyframe)
+        // Every frame of the stream is kept, whatever the codec is doing: a run with a hole would not decode.
+        gop.add(GopCache.Frame(annexB, frame.ptsUs, keyframe))
         if (codec == null) return@post
         if (needKeyframe && !keyframe) return@post
-        val annexB = ParameterSets.toAnnexB(payload, ps.nalLength) ?: return@post
         needKeyframe = false
         // A codec that stopped taking input for half a second has fallen behind for good: start
         // again from the next keyframe rather than show a picture that keeps lagging. (While it is
         // still allocating, frames wait: dropping them then costs a keyframe interval of black.)
-        if (pending.size >= 30) {
+        if (pending.size >= 30 && !replaying) {
             pending.clear()
             needKeyframe = !keyframe
             if (needKeyframe) return@post
         }
-        pending.add(Pending(annexB, nextPts(hostTimestamp), keyframe))
+        pending.add(frame)
         feed()
     }
 
@@ -157,6 +166,7 @@ class VideoDecoder(private val events: Events) {
     /** Forget the stream (a session ended): the next one starts from its parameter sets. */
     fun reset() = handler.post {
         teardown()
+        gop.clear()
         sets = null
         configuredSize = null
     }
@@ -176,6 +186,7 @@ class VideoDecoder(private val events: Events) {
         freeInputs.clear()
         pending.clear()
         latency.clear()
+        replaying = false; replayUntilPts = 0L
         needKeyframe = true
     }
 
@@ -241,6 +252,17 @@ class VideoDecoder(private val events: Events) {
             }.getOrDefault(false)
             val vendor = if (Build.VERSION.SDK_INT >= 31) runCatching { c.supportedVendorParameters.filter { it.contains("latency", true) || it.contains("low", true) } }.getOrDefault(emptyList()) else emptyList()
             Log.i(TAG, "decoder $name ${w}x$h started; low latency feature=$lowLatency vendor=$vendor")
+            // Made again mid-stream: the frames since the last keyframe are decoded first, so the picture is current
+            // at once and not after the Mac's next keyframe.
+            gop.replay()?.let { run ->
+                pending.clear()
+                run.forEach { pending.add(Pending(it.data, it.ptsUs, it.key)) }
+                needKeyframe = false
+                replaying = true
+                replayUntilPts = run.last().ptsUs
+                Log.i(TAG, "replaying ${run.size} frames since the last keyframe")
+                feed()
+            }
         } catch (e: Exception) {
             Log.w(TAG, "configure $name ${w}x$h: ${e.message}")
             runCatching { c.release() }
@@ -259,7 +281,9 @@ class VideoDecoder(private val events: Events) {
         }
         override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
             if (codec !== this@VideoDecoder.codec) return
-            runCatching { codec.releaseOutputBuffer(index, rendering) }
+            // A replay shows only its last frame: the ones before it are the past, decoded to get the codec's state right.
+            runCatching { codec.releaseOutputBuffer(index, rendering && (!replaying && replayUntilPts == 0L || info.presentationTimeUs >= replayUntilPts)) }
+            if (replayUntilPts != 0L && info.presentationTimeUs >= replayUntilPts) replayUntilPts = 0L
             noteOutput(info.presentationTimeUs)
             decodedFrames++
             events.onFrameRendered()
@@ -279,6 +303,7 @@ class VideoDecoder(private val events: Events) {
 
     private fun feed() {
         val c = codec ?: return
+        if (replaying && pending.size < 8) replaying = false
         while (freeInputs.isNotEmpty() && pending.isNotEmpty()) {
             val index = freeInputs.poll()!!
             val f = pending.poll()!!
@@ -292,7 +317,7 @@ class VideoDecoder(private val events: Events) {
                     continue
                 }
                 buf.put(f.data)
-                latency.queued(f.ptsUs, System.nanoTime())
+                if (replayUntilPts == 0L) latency.queued(f.ptsUs, System.nanoTime())
                 c.queueInputBuffer(index, 0, f.data.size, f.ptsUs, if (f.key) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0)
             } catch (e: Exception) {
                 Log.w(TAG, "queueInputBuffer: ${e.message}")

@@ -796,14 +796,16 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     fun select(source: StreamSource, user: Boolean = true) {
         val s = session ?: return
         if (user) lastUserPickAt = SystemClock.uptimeMillis()
-        adoptScaleFor(bundleOf(source))
         s.sendJson(Kind.SELECT_SOURCE, Payloads.select(source))
+        // After the pick, not before: the Mac keeps a viewport that arrives while it switches and sizes the new
+        // window to it, whereas one sent first resized (and put back) the window still on screen.
+        adoptScaleFor(bundleOf(source))
     }
 
     fun launch(app: AppInfo) {
         lastUserPickAt = SystemClock.uptimeMillis()
-        adoptScaleFor(app.bundleID)
         session?.sendJson(Kind.LAUNCH_APP, Payloads.launchApp(app.bundleID))
+        adoptScaleFor(app.bundleID)
     }
 
     fun windowCommand(id: Long, action: String) {

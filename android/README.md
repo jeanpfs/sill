@@ -79,6 +79,18 @@ Enlargement is for people who want 1×: a GL view with a Catmull-Rom filter in p
 one. It is off by default because it costs about 1.5 points of CPU, ~115 MB of memory and a frame of display
 delay (not measured), and it changes nothing at ¾× (identity at 1:1, measured).
 
+## Coming back to the app
+
+A decoder that is made again (its screen went away, a codec error) used to wait for the Mac's next keyframe,
+up to 4 s: after one second away the picture took 2.7 s to come back, against 230 ms (the window's own
+animation) after four or twenty. The decoder now keeps the frames since the last keyframe (`GopCache`, at most
+32 MB, dropped whole when over) and decodes them again, without showing them, when it is made again; the last one
+is shown. Measured after 1, 2 and 4 s away: 231 ms each.
+
+Text Size (Aa) is remembered per app (`TextScales`): a choice made while an app streams is that app's, the
+Desktop sets what the apps without a choice use. The app's own size goes to the Mac right after the pick, so the
+window comes up already at it and the window on screen is not resized and put back.
+
 ## Typing
 
 Typed text, accents and ç from the keyboard's long-press popup reach the Mac as Unicode text (checked with
