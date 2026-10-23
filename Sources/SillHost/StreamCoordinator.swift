@@ -1409,7 +1409,10 @@ package final class StreamCoordinator {
                 // Fit the window to the client's panel before capture starts, so the stream comes up
                 // at the new size instead of restarting once the catalog notices. `w` is a snapshot
                 // with the old frame; the window server has the new one.
-                if let resized = fitToViewport(w) { size = Self.liveBounds(of: id)?.size ?? resized }
+                // The size the resize reports, not the window server's bounds: they still show the old frame for a
+                // moment after the resize, and a stream started at that size shows the window at its old shape
+                // until the catalog notices, then restarts (the flash of a wrong-sized picture on every switch).
+                if let resized = fitToViewport(w) { size = resized }
                 describe = "\(w.owningApplication?.applicationName ?? "?") — \(w.title ?? "")\(useSoftwareEncoder ? " (software encoder)" : "")"
             }
             // A window drawn at 1× (a Chromium app in low resolution: Opera) has no more pixels than points, and
