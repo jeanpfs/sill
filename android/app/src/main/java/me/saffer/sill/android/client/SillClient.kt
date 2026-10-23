@@ -76,7 +76,14 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
     }
 
     // MARK: what the screens show
-    var phase by mutableStateOf<Phase>(Phase.Idle); private set
+    private var phaseState by mutableStateOf<Phase>(Phase.Idle)
+    var phase: Phase
+        get() = phaseState
+        private set(value) {
+            phaseState = value
+            // The process stays alive while a session is open or opening (SessionService), not otherwise.
+            if (value is Phase.Idle) SessionService.stop(app) else SessionService.start(app)
+        }
     var status by mutableStateOf<String?>(null); private set
     var savedMacs by mutableStateOf(store.all()); private set
     var currentMac by mutableStateOf<SavedMac?>(null); private set
@@ -417,7 +424,7 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
             endSessionState()
             phase = Phase.Idle
             status = null
-        }.also { main.postDelayed(it, 15_000) }
+        }.also { main.postDelayed(it, BACKGROUND_GRACE_MS) }
     }
 
     /** Whether the app is on screen (onStart … onStop). */
@@ -918,6 +925,8 @@ class SillClient(private val app: Context) : Session.Listener, VideoDecoder.Even
 
     companion object {
         private const val TAG = "Sill"
+        /** How long a session outlives the app leaving the screen (SessionService keeps it alive meanwhile): then the Mac stops streaming to nobody. */
+        private const val BACKGROUND_GRACE_MS = 90_000L
         @Volatile private var instance: SillClient? = null
         fun get(context: Context): SillClient = instance ?: synchronized(this) {
             instance ?: SillClient(context.applicationContext).also { instance = it }

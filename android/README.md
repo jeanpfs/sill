@@ -61,6 +61,15 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Android 10 (API 29) or later: TLS 1.3 and ALPN on `SSLSocket` are what the Mac's doors require.
 
+## Switching to another Android app
+
+While a session is open, Sill runs a foreground service (the ongoing "Sill is connected to your Mac"
+notification) so the connection survives another app being in front: Samsung's freezer otherwise aborted the
+socket about 5 s after the app left the screen and the stream reconnected from the start. The decoder keeps
+decoding without showing, so the picture is there at once on return and the Mac's resolution is untouched. A
+session left in the background for 90 s is closed (the Mac stops streaming to nobody) and reconnects on return.
+On Android 13+ allow notifications for Sill if you want the notification shown; the service runs either way.
+
 ## Install and debug without a cable (Tailscale)
 
 `adb` can reach the phone through the tailnet, so the app installs and debugs from anywhere both are on
