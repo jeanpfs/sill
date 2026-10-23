@@ -1412,7 +1412,11 @@ package final class StreamCoordinator {
                 if let resized = fitToViewport(w) { size = Self.liveBounds(of: id)?.size ?? resized }
                 describe = "\(w.owningApplication?.applicationName ?? "?") — \(w.title ?? "")\(useSoftwareEncoder ? " (software encoder)" : "")"
             }
-            let sourceScale = sourceRect == nil ? captureScale(for: size) : captureScale   // staged: the display's own scale
+            // A window drawn at 1× (a Chromium app in low resolution: Opera) has no more pixels than points, and
+            // ScreenCaptureKit does not enlarge them into a bigger frame: they would sit in its top-left corner at
+            // half size. Such a window is captured at its own scale.
+            nativeWindowScale = sourceRect == nil ? filter.map { CGFloat($0.pointPixelScale) }.flatMap { $0 > 0 ? $0 : nil } : nil
+            let sourceScale = sourceRect == nil ? cappedByNative(captureScale(for: size)) : captureScale   // staged: the display's own scale
             width = evenPixels(size.width * sourceScale); height = evenPixels(size.height * sourceScale)
             // Staged on the virtual display, nothing is activated or raised on select: the window
             // cannot be covered there, and the AX moves that put it there touch no focus.
@@ -1773,8 +1777,18 @@ package final class StreamCoordinator {
     }
 
     /// The running encoder is not at the size a source `points` big would be captured at now.
+    /// The backing scale of the window being captured, when it has fewer pixels per point than the capture scale
+    /// would ask for; nil for the Desktop, a staged window and before anything streams.
+    private var nativeWindowScale: CGFloat?
+
+    private func cappedByNative(_ scale: CGFloat) -> CGFloat {
+        guard let native = nativeWindowScale else { return scale }
+        return min(scale, native)
+    }
+
     private func capturedSizeIsStale(points: CGSize) -> Bool {
-        let s = captureScale(for: points)
+        var s = captureScale(for: points)
+        if case .window = active { s = cappedByNative(s) }
         return evenPixels(points.width * s) != encoderWidth || evenPixels(points.height * s) != encoderHeight
     }
 
