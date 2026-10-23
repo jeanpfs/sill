@@ -83,15 +83,14 @@ private fun PanelFrame(modifier: Modifier, title: String, onDone: () -> Unit, ba
 }
 
 /**
- * The Apps drawer: the Mac's installed apps to launch (launching one streams its first window). The Desktop and
- * the windows already open are on the windows rail, so they are not listed here again, and neither is an app that
- * has a window open.
+ * The Apps drawer: every installed app on the Mac, to launch (launching one streams its first window; an app that
+ * is open is brought to its window). The Desktop and the windows already open are on the windows rail, so they are
+ * not listed here again.
  */
 @Composable
 fun AppsPanel(client: SillClient, modifier: Modifier, onDone: () -> Unit) {
     var query by remember { mutableStateOf("") }
-    val open = client.windows.mapTo(HashSet()) { it.bundleID }
-    val launchable = client.apps.filter { it.bundleID !in open }
+    val launchable = client.apps
     PanelFrame(modifier, "Apps", onDone) {
         LazyColumn(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
             item {
@@ -100,7 +99,7 @@ fun AppsPanel(client: SillClient, modifier: Modifier, onDone: () -> Unit) {
             }
             val shown = launchable.filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
             if (shown.isEmpty()) item {
-                Text(if (launchable.isEmpty()) "Every app is already open." else "No app matches.", fontSize = 14.sp, color = SillColors.secondaryText,
+                Text(if (launchable.isEmpty()) "No apps yet." else "No app matches.", fontSize = 14.sp, color = SillColors.secondaryText,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp))
             }
             items(shown, key = { "a${it.bundleID}" }) { a ->
