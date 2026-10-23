@@ -24,6 +24,7 @@ final class TextFocusWatcher {
     private var switchCounter = TitleSwitchCounter()
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private var look: Task<Void, Never>?
+    private var nudged: Task<Void, Never>?
 
     init(server: StreamServer, focus: AccessibilityFocus?) {
         self.server = server
@@ -66,7 +67,23 @@ final class TextFocusWatcher {
         }
     }
 
+    /// A click was just delivered: what it did to the focus and to the front window's title (a terminal's tab
+    /// switched) shows within a few tens of ms, and the device is waiting for it to decide about the keyboard,
+    /// so look once more after `delay` instead of at the next quarter second.
+    func nudge(after delay: TimeInterval = 0.12) {
+        guard !tracker.subscribers.isEmpty else { return }
+        nudged?.cancel()
+        nudged = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self, !self.tracker.subscribers.isEmpty else { return }
+            let state = await self.readState()
+            guard !Task.isCancelled else { return }
+            self.observed(state)
+        }
+    }
+
     private func stopLooking() {
+        nudged?.cancel(); nudged = nil
         look?.cancel()
         look = nil
         focus?.release()

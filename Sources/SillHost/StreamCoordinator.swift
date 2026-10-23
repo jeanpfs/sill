@@ -938,6 +938,7 @@ package final class StreamCoordinator {
             if !synthetic { raiseIfInteracting(event) }
             deliver(event, in: rect, from: device)
             desktopInputMayActivate(event)
+            if case .pointer(let action, _, _) = event, action == .leftDown { textFocus.nudge() }
         case .gesture:
             // A three- or four-finger gesture (docs/trackpad-gestures-plan.md §7.4), which the Mac
             // turns into its own shortcut. At most `gesturesPerSecond` a second per connection: a

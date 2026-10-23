@@ -153,7 +153,7 @@ fun StreamScreen(client: SillClient) {
     LaunchedEffect(tapped) {
         if (tapped == 0) return@LaunchedEffect
         val before = switchesAtTap
-        delay(650)
+        delay(350)
         val s = sink ?: return@LaunchedEffect
         if (client.autoKeyboard && client.macTextFocused && client.macTextSwitches == before && !imeNow && !keyboardWanted) {
             overlay = Overlay.NONE; keyboardWanted = true; autoOpened = true; s.show()
